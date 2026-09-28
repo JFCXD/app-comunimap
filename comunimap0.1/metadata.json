@@ -1,0 +1,6 @@
+{
+  "name": "ComuniMap",
+  "description": "ComuniMap - Mapa Interactivo. Aplicación para la gestión, reporte y visualización de alertas e incidencias comunitarias.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
