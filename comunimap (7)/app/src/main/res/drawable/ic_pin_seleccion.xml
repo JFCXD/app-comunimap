@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="52dp"
+    android:viewportWidth="36"
+    android:viewportHeight="52">
+    <!-- Sombra suave inferior -->
+    <path
+        android:fillColor="#44000000"
+        android:pathData="M18,48a7,3.5 0 1,0 0,7a7,3.5 0 1,0 0,-7Z" />
+    <!-- Cuerpo del pin azul brillante (Selección activa) -->
+    <path
+        android:fillColor="#2563EB"
+        android:pathData="M18,0C8.06,0 0,8.06 0,18c0,13 18,34 18,34s18,-21 18,-34C36,8.06 27.94,0 18,0z" />
+    <!-- Círculo interior blanco -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M18,18m-7,0a7,7 0 1,0 14,0a7,7 0 1,0 -14,0" />
+    <!-- Cruz / más en el centro -->
+    <path
+        android:fillColor="#2563EB"
+        android:pathData="M17,13h2v4h4v2h-4v4h-2v-4h-4v-2h4z" />
+</vector>

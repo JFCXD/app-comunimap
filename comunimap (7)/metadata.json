@@ -1,0 +1,6 @@
+{
+  "name": "ComuniMap",
+  "description": "Aplicación ComuniMap para consultar usuarios reales desde la API en Railway",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
