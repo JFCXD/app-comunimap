@@ -10,12 +10,15 @@ import com.example.comunimap.models.CrearReporteRequest
 import com.example.comunimap.models.CrearUsuarioRequest
 import com.example.comunimap.models.LoginRequest
 import com.example.comunimap.models.LoginResponse
+import com.example.comunimap.models.MarcarNotificacionRequest
+import com.example.comunimap.models.NotificacionesResponse
 import com.example.comunimap.models.ReportesResponse
 import com.example.comunimap.models.UsuariosResponse
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Query
 
 // =====================================================
 // INTERFAZ DE SERVICIO RETROFIT - COMUNIMAP
@@ -80,4 +83,20 @@ interface ApiService {
     // Actualiza el estado (Pendiente / En Proceso / Solucionado) de un reporte.
     @POST("actualizar_estado.php")
     suspend fun actualizarEstadoReporte(@Body request: ActualizarEstadoReporteRequest): Response<ApiResponse>
+
+    // -------------------------------------------------
+    // NOTIFICACIONES
+    // -------------------------------------------------
+
+    // Consulta las notificaciones del usuario en sesión
+    @GET("notificaciones.php")
+    suspend fun obtenerNotificaciones(
+        @Query("idUsuario") idUsuario: String
+    ): Response<NotificacionesResponse>
+
+    // Marca una notificación como leída
+    @POST("marcar_notificacion.php")
+    suspend fun marcarNotificacionLeida(
+        @Body request: MarcarNotificacionRequest
+    ): Response<ApiResponse>
 }
