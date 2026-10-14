@@ -96,31 +96,31 @@ fun UsuariosScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Consulta de la lista de usuarios reales desde Railway
-    fun consultarUsuarios() {
-        coroutineScope.launch {
-            isLoading = true
-            errorMessage = null
-            try {
-                val response = ApiClient.apiService.obtenerUsuarios()
-                Log.d("USUARIOS_HTTP", "HTTP: ${response.code()}")
+    suspend fun consultarUsuarios() {
+        isLoading = true
+        errorMessage = null
+        try {
+            val response = ApiClient.apiService.obtenerUsuarios()
+            Log.d("USUARIOS_HTTP", "HTTP: ${response.code()}")
 
-                if (response.isSuccessful) {
-                    val body = response.body()
-                    if (body != null && body.success) {
-                        Log.d("USUARIOS_RESPONSE", "Usuarios recibidos: ${body.usuarios.size}")
-                        usuarios = body.usuarios
-                    } else {
-                        errorMessage = "La API respondió con un error."
-                    }
+            if (response.isSuccessful) {
+                val body = response.body()
+                if (body != null && body.success) {
+                    Log.d("USUARIOS_RESPONSE", "Usuarios recibidos: ${body.usuarios.size}")
+                    usuarios = body.usuarios
                 } else {
-                    errorMessage = "Error del servidor: HTTP ${response.code()}"
+                    errorMessage = "La API respondió con un error."
                 }
-            } catch (exception: Exception) {
-                Log.e("USUARIOS_ERROR", "Error consultando usuarios", exception)
-                errorMessage = "No se pudo conectar con el servidor."
-            } finally {
-                isLoading = false
+            } else {
+                errorMessage = "Error del servidor: HTTP ${response.code()}"
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (exception: Exception) {
+            Log.e("USUARIOS_ERROR", "Error consultando usuarios", exception)
+            errorMessage = "No se pudo conectar con el servidor."
+        } finally {
+            isLoading = false
         }
     }
 
@@ -145,7 +145,7 @@ fun UsuariosScreen() {
                 title = { Text("Usuarios", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(
-                        onClick = { consultarUsuarios() },
+                        onClick = { coroutineScope.launch { consultarUsuarios() } },
                         enabled = !isLoading,
                         modifier = Modifier.testTag("usuarios_refresh_button")
                     ) {
@@ -239,7 +239,7 @@ fun UsuariosScreen() {
                             style = MaterialTheme.typography.bodyLarge
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { consultarUsuarios() }) {
+                        Button(onClick = { coroutineScope.launch { consultarUsuarios() } }) {
                             Text("Reintentar")
                         }
                     }
@@ -278,8 +278,8 @@ fun UsuariosScreen() {
             onDismiss = { showCrearDialog = false },
             onUsuarioCreado = {
                 showCrearDialog = false
-                consultarUsuarios()
                 coroutineScope.launch {
+                    consultarUsuarios()
                     snackbarHostState.showSnackbar("Usuario creado con éxito")
                 }
             }
@@ -293,8 +293,8 @@ fun UsuariosScreen() {
             onDismiss = { usuarioAEditar = null },
             onUsuarioEditado = {
                 usuarioAEditar = null
-                consultarUsuarios()
                 coroutineScope.launch {
+                    consultarUsuarios()
                     snackbarHostState.showSnackbar("Usuario actualizado con éxito")
                 }
             }
@@ -308,8 +308,8 @@ fun UsuariosScreen() {
             onDismiss = { usuarioACambiarEstado = null },
             onEstadoCambiado = {
                 usuarioACambiarEstado = null
-                consultarUsuarios()
                 coroutineScope.launch {
+                    consultarUsuarios()
                     snackbarHostState.showSnackbar("Estado de usuario actualizado")
                 }
             }

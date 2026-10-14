@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // =====================================================
-// FLUJO PRINCIPAL CON CONTROL DE SESIÓN
+// FLUJO PRINCIPAL CON CONTROL DE SESIÓN Y ROLES
 // =====================================================
 
 @Composable
@@ -115,6 +115,28 @@ fun ComuniMapApp() {
             }
         )
     } else {
+        // Detección centralizada de rol: solo Administrador y Usuario (tolerante a espacios)
+        val esAdministrador =
+            usuarioActual
+                ?.rol
+                ?.trim()
+                ?.equals(
+                    "Administrador",
+                    ignoreCase = true
+                ) == true
+
+        // Seguridad: si el usuario no es Administrador y está en USUARIOS, redirigir a INICIO
+        if (!esAdministrador && destinoActual == DestinoNavegacion.USUARIOS) {
+            destinoActual = DestinoNavegacion.INICIO
+        }
+
+        // Pestañas visibles: Usuario ve [Inicio, Reportes, Mapa, Más]; Administrador ve además [Usuarios]
+        val destinosVisibles = if (esAdministrador) {
+            DestinoNavegacion.values().toList()
+        } else {
+            DestinoNavegacion.values().filter { it != DestinoNavegacion.USUARIOS }
+        }
+
         // -------------------------------------------------
         // APLICACIÓN PRINCIPAL (CON SESIÓN ACTIVA)
         // -------------------------------------------------
@@ -132,7 +154,7 @@ fun ComuniMapApp() {
                     contentColor = Color(0xFF94A3B8),
                     modifier = Modifier.testTag("bottom_nav_bar")
                 ) {
-                    DestinoNavegacion.values().forEach { destino ->
+                    destinosVisibles.forEach { destino ->
                         val isSelected = destinoActual == destino
                         NavigationBarItem(
                             icon = { Icon(destino.icono, contentDescription = destino.titulo) },
@@ -158,15 +180,32 @@ fun ComuniMapApp() {
             ) {
                 when (destinoActual) {
                     DestinoNavegacion.INICIO -> InicioScreen(
+                        usuarioActual = usuarioActual,
+                        esAdministrador = esAdministrador,
                         onNavigateToReportes = { destinoActual = DestinoNavegacion.REPORTES },
                         onNavigateToMapa = { destinoActual = DestinoNavegacion.MAPA },
-                        onNavigateToUsuarios = { destinoActual = DestinoNavegacion.USUARIOS }
+                        onNavigateToUsuarios = {
+                            if (esAdministrador) {
+                                destinoActual = DestinoNavegacion.USUARIOS
+                            }
+                        }
                     )
-                    DestinoNavegacion.REPORTES -> ReportesScreen()
+                    DestinoNavegacion.REPORTES -> ReportesScreen(
+                        usuarioActual = usuarioActual,
+                        esAdministrador = esAdministrador
+                    )
                     DestinoNavegacion.MAPA -> MapaScreen(
-                        usuarioActual = usuarioActual
+                        usuarioActual = usuarioActual,
+                        esAdministrador = esAdministrador
                     )
-                    DestinoNavegacion.USUARIOS -> UsuariosScreen()
+                    DestinoNavegacion.USUARIOS -> {
+                        if (esAdministrador) {
+                            UsuariosScreen()
+                        } else {
+                            // Protección contra accesos no autorizados
+                            destinoActual = DestinoNavegacion.INICIO
+                        }
+                    }
                     DestinoNavegacion.MAS -> MasScreen(
                         usuarioActual = usuarioActual,
                         onCerrarSesion = {

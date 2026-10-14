@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -82,7 +83,10 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReportesScreen() {
+fun ReportesScreen(
+    usuarioActual: Usuario? = null,
+    esAdministrador: Boolean = false
+) {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var reportes by remember { mutableStateOf<List<Reporte>>(emptyList()) }
@@ -103,45 +107,47 @@ fun ReportesScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Consulta de reportes, categorías y usuarios reales
-    fun cargarDatos() {
-        coroutineScope.launch {
-            isLoading = true
-            errorMessage = null
-            try {
-                // 1. Cargar reportes
-                val respReportes = ApiClient.apiService.obtenerReportes()
-                Log.d("REPORTES_HTTP", "HTTP: ${respReportes.code()}")
-                if (respReportes.isSuccessful) {
-                    val body = respReportes.body()
-                    if (body != null && body.success) {
-                        reportes = body.reportes
-                        Log.d("REPORTES_RESPONSE", "Reportes recibidos: ${body.reportes.size}")
-                    } else {
-                        errorMessage = "La API respondió con un error."
-                    }
+    suspend fun cargarDatos() {
+        isLoading = true
+        errorMessage = null
+        try {
+            // 1. Cargar reportes
+            val respReportes = ApiClient.apiService.obtenerReportes()
+            Log.d("REPORTES_HTTP", "HTTP: ${respReportes.code()}")
+            if (respReportes.isSuccessful) {
+                val body = respReportes.body()
+                if (body != null && body.success) {
+                    reportes = body.reportes
+                    Log.d("REPORTES_RESPONSE", "Reportes recibidos: ${body.reportes.size}")
                 } else {
-                    errorMessage = "Error del servidor: HTTP ${respReportes.code()}"
+                    errorMessage = "La API respondió con un error."
                 }
+            } else {
+                errorMessage = "Error del servidor: HTTP ${respReportes.code()}"
+            }
 
-                // 2. Cargar categorías para selección
-                val respCategorias = ApiClient.apiService.obtenerCategorias()
-                Log.d("CATEGORIAS_HTTP", "HTTP: ${respCategorias.code()}")
-                if (respCategorias.isSuccessful && respCategorias.body()?.success == true) {
-                    categorias = respCategorias.body()?.categorias ?: emptyList()
-                    Log.d("CATEGORIAS_RESPONSE", "Categorías recibidas: ${categorias.size}")
-                }
+            // 2. Cargar categorías para selección
+            val respCategorias = ApiClient.apiService.obtenerCategorias()
+            Log.d("CATEGORIAS_HTTP", "HTTP: ${respCategorias.code()}")
+            if (respCategorias.isSuccessful && respCategorias.body()?.success == true) {
+                categorias = respCategorias.body()?.categorias ?: emptyList()
+                Log.d("CATEGORIAS_RESPONSE", "Categorías recibidas: ${categorias.size}")
+            }
 
-                // 3. Cargar usuarios para asociar autor si se requiere
+            // 3. Cargar usuarios para asociar autor si es Administrador
+            if (esAdministrador) {
                 val respUsuarios = ApiClient.apiService.obtenerUsuarios()
                 if (respUsuarios.isSuccessful && respUsuarios.body()?.success == true) {
                     usuarios = respUsuarios.body()?.usuarios ?: emptyList()
                 }
-            } catch (ex: Exception) {
-                Log.e("REPORTES_ERROR", "Error consultando reportes", ex)
-                errorMessage = "No se pudo conectar con el servidor."
-            } finally {
-                isLoading = false
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (ex: Exception) {
+            Log.e("REPORTES_ERROR", "Error consultando reportes", ex)
+            errorMessage = "No se pudo conectar con el servidor."
+        } finally {
+            isLoading = false
         }
     }
 
@@ -149,8 +155,18 @@ fun ReportesScreen() {
         cargarDatos()
     }
 
-    // Filtrado de reportes
-    val reportesFiltrados = reportes.filter { r ->
+    // Filtrado de reportes por rol (Administrador ve todos, Usuario solo los suyos)
+    val reportesVisibles = remember(reportes, esAdministrador, usuarioActual) {
+        if (esAdministrador) {
+            reportes
+        } else {
+            val uid = usuarioActual?.idUsuario?.toString() ?: ""
+            reportes.filter { it.idUsuario?.toString() == uid }
+        }
+    }
+
+    // Filtrado de reportes según búsqueda y filtros seleccionados
+    val reportesFiltrados = reportesVisibles.filter { r ->
         val matchesSearch = searchQuery.isBlank() ||
                 r.titulo.contains(searchQuery, ignoreCase = true) ||
                 (r.direccion?.contains(searchQuery, ignoreCase = true) == true)
@@ -165,10 +181,15 @@ fun ReportesScreen() {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Reportes", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        if (esAdministrador) "Gestión de Reportes" else "Mis Reportes",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
                 actions = {
                     IconButton(
-                        onClick = { cargarDatos() },
+                        onClick = { coroutineScope.launch { cargarDatos() } },
                         enabled = !isLoading,
                         modifier = Modifier.testTag("reportes_refresh_button")
                     ) {
@@ -278,7 +299,7 @@ fun ReportesScreen() {
                             style = MaterialTheme.typography.bodyLarge
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { cargarDatos() }) {
+                        Button(onClick = { coroutineScope.launch { cargarDatos() } }) {
                             Text("Reintentar")
                         }
                     }
@@ -286,7 +307,11 @@ fun ReportesScreen() {
             } else if (reportesFiltrados.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text = "No se encontraron reportes con los filtros seleccionados.",
+                        text = if (esAdministrador) {
+                            "No se encontraron reportes con los filtros seleccionados."
+                        } else {
+                            "No tienes reportes registrados o no coinciden con los filtros."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -302,6 +327,7 @@ fun ReportesScreen() {
                     items(reportesFiltrados) { reporte ->
                         ReporteCard(
                             reporte = reporte,
+                            esAdministrador = esAdministrador,
                             onVerDetalle = { reporteDetalle = reporte },
                             onEditar = { reporteAEditar = reporte },
                             onCambiarEstado = { reporteACambiarEstado = reporte }
@@ -320,8 +346,8 @@ fun ReportesScreen() {
             onDismiss = { reporteAEditar = null },
             onReporteEditado = {
                 reporteAEditar = null
-                cargarDatos()
                 coroutineScope.launch {
+                    cargarDatos()
                     snackbarHostState.showSnackbar("Reporte actualizado con éxito")
                 }
             }
@@ -335,8 +361,8 @@ fun ReportesScreen() {
             onDismiss = { reporteACambiarEstado = null },
             onEstadoCambiado = {
                 reporteACambiarEstado = null
-                cargarDatos()
                 coroutineScope.launch {
+                    cargarDatos()
                     snackbarHostState.showSnackbar("Estado cambiado con éxito")
                 }
             }
@@ -356,6 +382,7 @@ fun ReportesScreen() {
 @Composable
 private fun ReporteCard(
     reporte: Reporte,
+    esAdministrador: Boolean,
     onVerDetalle: () -> Unit,
     onEditar: () -> Unit,
     onCambiarEstado: () -> Unit
@@ -434,21 +461,29 @@ private fun ReporteCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Acciones rápidas: Editar y Cambiar Estado
+            // Acciones: Administrador tiene Estado y Editar; Usuario tiene Ver Detalle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                TextButton(onClick = onCambiarEstado) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.height(18.dp))
+                if (esAdministrador) {
+                    TextButton(onClick = onCambiarEstado) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Estado", fontSize = 12.sp)
+                    }
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Estado", fontSize = 12.sp)
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                TextButton(onClick = onEditar) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.height(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Editar", fontSize = 12.sp)
+                    TextButton(onClick = onEditar) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Editar", fontSize = 12.sp)
+                    }
+                } else {
+                    TextButton(onClick = onVerDetalle) {
+                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Ver Detalle", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -468,8 +503,15 @@ private fun EditarReporteDialog(
     var descripcion by remember { mutableStateOf(reporte.descripcion) }
     var ubicacion by remember { mutableStateOf(reporte.ubicacion ?: "") }
     var direccion by remember { mutableStateOf(reporte.direccion ?: "") }
-    var selectedCategoriaId by remember { mutableStateOf(reporte.idCategoria ?: (categorias.firstOrNull()?.idCategoria ?: "1")) }
+    var selectedCategoriaId by remember { mutableStateOf<String?>(reporte.idCategoria ?: categorias.firstOrNull()?.idCategoria) }
     var selectedEstado by remember { mutableStateOf(reporte.estado) }
+
+    // Actualizar categoría si las categorías terminan de cargar posteriormente
+    LaunchedEffect(categorias) {
+        if (selectedCategoriaId == null && categorias.isNotEmpty()) {
+            selectedCategoriaId = categorias.firstOrNull()?.idCategoria
+        }
+    }
 
     var isSubmitting by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
@@ -543,7 +585,7 @@ private fun EditarReporteDialog(
                                 DropdownMenuItem(
                                     text = { Text(cat.nombre) },
                                     onClick = {
-                                        selectedCategoriaId = cat.idCategoria ?: "1"
+                                        selectedCategoriaId = cat.idCategoria
                                         catExpanded = false
                                     }
                                 )
@@ -602,6 +644,15 @@ private fun EditarReporteDialog(
                         formError = "ID de reporte inválido."
                         return@Button
                     }
+                    val idCategoriaActualizada = selectedCategoriaId
+                    if (idCategoriaActualizada.isNullOrBlank()) {
+                        formError = if (categorias.isEmpty()) {
+                            "No se pudieron cargar las categorías."
+                        } else {
+                            "Selecciona una categoría válida."
+                        }
+                        return@Button
+                    }
                     coroutineScope.launch {
                         isSubmitting = true
                         formError = null
@@ -612,7 +663,7 @@ private fun EditarReporteDialog(
                                 descripcion = descripcion.trim(),
                                 ubicacion = ubicacion.trim(),
                                 direccion = direccion.trim(),
-                                idCategoria = selectedCategoriaId,
+                                idCategoria = idCategoriaActualizada,
                                 estado = selectedEstado
                             )
                             Log.d("API_MUTATION", "POST actualizar_reporte.php id: $idReporte")

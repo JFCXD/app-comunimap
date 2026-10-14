@@ -127,6 +127,8 @@ fun MasScreen(
                     connectionSuccess = false
                     connectionResult = "Error del servidor: HTTP ${resp.code()}"
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (ex: Exception) {
                 Log.e("USUARIOS_ERROR", "Fallo al probar conexión", ex)
                 connectionSuccess = false

@@ -106,7 +106,8 @@ private val AccentBlue = Color(0xFF3B82F6)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapaScreen(
-    usuarioActual: Usuario? = null
+    usuarioActual: Usuario? = null,
+    esAdministrador: Boolean = false
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -130,45 +131,55 @@ fun MapaScreen(
     // Referencia al MapView
     var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
 
-    // Consulta de los reportes y categorías reales para el mapa
-    fun cargarDatos() {
-        coroutineScope.launch {
-            isLoading = true
-            errorMessage = null
-            try {
-                // 1. Cargar reportes para marcadores en tiempo real
-                val resp = ApiClient.apiService.obtenerReportes()
-                Log.d("REPORTES_HTTP", "HTTP: ${resp.code()}")
-                if (resp.isSuccessful && resp.body()?.success == true) {
-                    reportes = resp.body()?.reportes ?: emptyList()
-                    Log.d("REPORTES_RESPONSE", "Cargados ${reportes.size} reportes en el mapa")
-                    actualizarMarcadoresEnMapa(
-                        context = context,
-                        mapView = mapViewInstance,
-                        reportes = reportes,
-                        puntoTemporal = puntoTemporal,
-                        modoSeleccion = modoSeleccionUbicacion,
-                        onReporteClick = { rep ->
-                            if (!modoSeleccionUbicacion) {
-                                reporteSeleccionado = rep
-                            }
-                        }
-                    )
-                } else {
-                    errorMessage = "No se pudieron obtener los reportes del mapa."
-                }
+    // Filtrado de reportes por rol: Administrador ve todos, Usuario solo los suyos
+    val reportesVisibles = remember(reportes, esAdministrador, usuarioActual) {
+        if (esAdministrador) {
+            reportes
+        } else {
+            val uid = usuarioActual?.idUsuario?.toString() ?: ""
+            reportes.filter { it.idUsuario?.toString() == uid }
+        }
+    }
 
-                // 2. Cargar categorías para el formulario
-                val respCat = ApiClient.apiService.obtenerCategorias()
-                if (respCat.isSuccessful && respCat.body()?.success == true) {
-                    categorias = respCat.body()?.categorias ?: emptyList()
-                }
-            } catch (ex: Exception) {
-                Log.e("REPORTES_ERROR", "Error cargando marcadores del mapa", ex)
-                errorMessage = "No se pudo conectar con el servidor."
-            } finally {
-                isLoading = false
+    // Consulta de los reportes y categorías reales para el mapa
+    suspend fun cargarDatos() {
+        isLoading = true
+        errorMessage = null
+        try {
+            // 1. Cargar reportes para marcadores en tiempo real
+            val resp = ApiClient.apiService.obtenerReportes()
+            Log.d("REPORTES_HTTP", "HTTP: ${resp.code()}")
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                reportes = resp.body()?.reportes ?: emptyList()
+                Log.d("REPORTES_RESPONSE", "Cargados ${reportes.size} reportes en el mapa")
+                actualizarMarcadoresEnMapa(
+                    context = context,
+                    mapView = mapViewInstance,
+                    reportes = reportesVisibles,
+                    puntoTemporal = puntoTemporal,
+                    modoSeleccion = modoSeleccionUbicacion,
+                    onReporteClick = { rep ->
+                        if (!modoSeleccionUbicacion) {
+                            reporteSeleccionado = rep
+                        }
+                    }
+                )
+            } else {
+                errorMessage = "No se pudieron obtener los reportes del mapa."
             }
+
+            // 2. Cargar categorías para el formulario
+            val respCat = ApiClient.apiService.obtenerCategorias()
+            if (respCat.isSuccessful && respCat.body()?.success == true) {
+                categorias = respCat.body()?.categorias ?: emptyList()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (ex: Exception) {
+            Log.e("REPORTES_ERROR", "Error cargando marcadores del mapa", ex)
+            errorMessage = "No se pudo conectar con el servidor."
+        } finally {
+            isLoading = false
         }
     }
 
@@ -176,12 +187,12 @@ fun MapaScreen(
         cargarDatos()
     }
 
-    // Efecto para redibujar marcadores cuando cambia puntoTemporal o modoSeleccionUbicacion
-    LaunchedEffect(puntoTemporal, modoSeleccionUbicacion) {
+    // Efecto para redibujar marcadores cuando cambian puntoTemporal, modoSeleccionUbicacion o reportesVisibles
+    LaunchedEffect(puntoTemporal, modoSeleccionUbicacion, reportesVisibles) {
         actualizarMarcadoresEnMapa(
             context = context,
             mapView = mapViewInstance,
-            reportes = reportes,
+            reportes = reportesVisibles,
             puntoTemporal = puntoTemporal,
             modoSeleccion = modoSeleccionUbicacion,
             onReporteClick = { rep ->
@@ -200,12 +211,24 @@ fun MapaScreen(
                 title = {
                     Column {
                         Text(
-                            text = if (modoSeleccionUbicacion) "Selecciona Ubicación" else "Mapa de Reportes",
+                            text = if (modoSeleccionUbicacion) {
+                                "Selecciona Ubicación"
+                            } else if (esAdministrador) {
+                                "Mapa de Reportes"
+                            } else {
+                                "Mis Reportes en Mapa"
+                            },
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            text = if (modoSeleccionUbicacion) "Toca el mapa para ubicar el incidente" else "Cochabamba • Tiempo Real",
+                            text = if (modoSeleccionUbicacion) {
+                                "Toca el mapa para ubicar el incidente"
+                            } else if (esAdministrador) {
+                                "Todos los incidentes • Cochabamba"
+                            } else {
+                                "Tus incidentes reportados • Cochabamba"
+                            },
                             fontSize = 11.sp,
                             color = Color(0xFF94A3B8)
                         )
@@ -224,7 +247,7 @@ fun MapaScreen(
                         }
                     } else {
                         IconButton(
-                            onClick = { cargarDatos() },
+                            onClick = { coroutineScope.launch { cargarDatos() } },
                             enabled = !isLoading,
                             modifier = Modifier.testTag("mapa_refresh_button")
                         ) {
@@ -349,7 +372,7 @@ fun MapaScreen(
                     actualizarMarcadoresEnMapa(
                         context = context,
                         mapView = mapView,
-                        reportes = reportes,
+                        reportes = reportesVisibles,
                         puntoTemporal = puntoTemporal,
                         modoSeleccion = modoSeleccionUbicacion,
                         onReporteClick = { rep ->
@@ -736,8 +759,8 @@ fun MapaScreen(
                 modoSeleccionUbicacion = false
                 puntoTemporal = null
                 mostrarFormularioCrear = false
-                cargarDatos()
                 coroutineScope.launch {
+                    cargarDatos()
                     snackbarHostState.showSnackbar("Reporte creado con éxito en el mapa")
                 }
             }
@@ -764,14 +787,18 @@ private fun FormularioCrearReporteDialog(
     var titulo by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
     var direccion by remember { mutableStateOf("") }
-    var selectedCategoriaId by remember { mutableStateOf(categorias.firstOrNull()?.idCategoria ?: "1") }
+    var selectedCategoriaId by remember { mutableStateOf<String?>(categorias.firstOrNull()?.idCategoria) }
+
+    // Actualizar categoría seleccionada si las categorías terminan de cargar posteriormente
+    LaunchedEffect(categorias) {
+        if (selectedCategoriaId == null && categorias.isNotEmpty()) {
+            selectedCategoriaId = categorias.firstOrNull()?.idCategoria
+        }
+    }
 
     var isSubmitting by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
-
-    // El autor del reporte se toma obligatoriamente del usuario con sesión activa
-    val idUsuarioAutor = usuarioActual?.idUsuario ?: "1"
 
     AlertDialog(
         onDismissRequest = { if (!isSubmitting) onDismiss() },
@@ -875,7 +902,7 @@ private fun FormularioCrearReporteDialog(
                                 DropdownMenuItem(
                                     text = { Text(cat.nombre) },
                                     onClick = {
-                                        selectedCategoriaId = cat.idCategoria ?: "1"
+                                        selectedCategoriaId = cat.idCategoria
                                         catExpanded = false
                                     }
                                 )
@@ -896,10 +923,27 @@ private fun FormularioCrearReporteDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    val idUsuarioAutor = usuarioActual?.idUsuario
+                    if (idUsuarioAutor.isNullOrBlank()) {
+                        formError = "No se pudo identificar al usuario actual. Inicia sesión nuevamente."
+                        return@Button
+                    }
+
                     if (titulo.isBlank() || descripcion.isBlank() || direccion.isBlank()) {
                         formError = "Por favor completa todos los campos obligatorios."
                         return@Button
                     }
+
+                    val idCategoriaSeleccionada = selectedCategoriaId
+                    if (idCategoriaSeleccionada.isNullOrBlank()) {
+                        formError = if (categorias.isEmpty()) {
+                            "No se pudieron cargar las categorías."
+                        } else {
+                            "Selecciona una categoría válida."
+                        }
+                        return@Button
+                    }
+
                     coroutineScope.launch {
                         isSubmitting = true
                         formError = null
@@ -910,7 +954,7 @@ private fun FormularioCrearReporteDialog(
                                 ubicacion = ubicacion.trim(),
                                 direccion = direccion.trim(),
                                 idUsuario = idUsuarioAutor,
-                                idCategoria = selectedCategoriaId,
+                                idCategoria = idCategoriaSeleccionada,
                                 imagen = null
                             )
                             Log.d("API_MUTATION", "POST crear_reporte.php autor: $idUsuarioAutor coords: $ubicacion")

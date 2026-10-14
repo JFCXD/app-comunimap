@@ -114,14 +114,28 @@ fun LoginScreen(
                     } else {
                         errorMessage = body?.message ?: "Correo o contraseña incorrectos."
                     }
-                } else if (response.code() == 404) {
-                    errorMessage = "El endpoint login.php no fue encontrado en el servidor (HTTP 404). Falta crear dicho archivo PHP en Railway."
                 } else {
-                    errorMessage = "Error del servidor: HTTP ${response.code()}"
+                    when (response.code()) {
+                        400 -> errorMessage = "Completa correctamente el correo y la contraseña."
+                        401 -> errorMessage = "Correo o contraseña incorrectos."
+                        500 -> errorMessage = "No se pudo iniciar sesión. Inténtalo nuevamente."
+                        else -> errorMessage = "No se pudo iniciar sesión. Inténtalo nuevamente."
+                    }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (ex: java.net.SocketTimeoutException) {
+                Log.e("USUARIOS_ERROR", "Timeout en login", ex)
+                errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión a Internet."
+            } catch (ex: java.net.UnknownHostException) {
+                Log.e("USUARIOS_ERROR", "Sin conexión en login", ex)
+                errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión a Internet."
+            } catch (ex: java.io.IOException) {
+                Log.e("USUARIOS_ERROR", "Error de red en login", ex)
+                errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión a Internet."
             } catch (ex: Exception) {
                 Log.e("USUARIOS_ERROR", "Error en login", ex)
-                errorMessage = "No se pudo conectar con el servidor."
+                errorMessage = "No se pudo conectar con el servidor. Revisa tu conexión a Internet."
             } finally {
                 isLoading = false
             }
