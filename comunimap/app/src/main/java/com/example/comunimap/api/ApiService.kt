@@ -8,6 +8,7 @@ import com.example.comunimap.models.CambiarEstadoUsuarioRequest
 import com.example.comunimap.models.CategoriasResponse
 import com.example.comunimap.models.CrearReporteRequest
 import com.example.comunimap.models.CrearUsuarioRequest
+import com.example.comunimap.models.GuardarTokenFcmRequest
 import com.example.comunimap.models.LoginRequest
 import com.example.comunimap.models.LoginResponse
 import com.example.comunimap.models.MarcarNotificacionRequest
@@ -98,5 +99,15 @@ interface ApiService {
     @POST("marcar_notificacion.php")
     suspend fun marcarNotificacionLeida(
         @Body request: MarcarNotificacionRequest
+    ): Response<ApiResponse>
+
+    // -------------------------------------------------
+    // TOKEN FCM
+    // -------------------------------------------------
+
+    // Registra o actualiza el token FCM del usuario en la base de datos
+    @POST("guardar_token_fcm.php")
+    suspend fun guardarTokenFcm(
+        @Body request: GuardarTokenFcmRequest
     ): Response<ApiResponse>
 }

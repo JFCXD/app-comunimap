@@ -10,13 +10,13 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class Notificacion(
     @Json(name = "idNotificacion")
-    val idNotificacion: String,
+    val idNotificacion: Int,
 
     @Json(name = "idUsuario")
-    val idUsuario: String,
+    val idUsuario: Int,
 
     @Json(name = "idReporte")
-    val idReporte: String?,
+    val idReporte: Int?,
 
     @Json(name = "titulo")
     val titulo: String,

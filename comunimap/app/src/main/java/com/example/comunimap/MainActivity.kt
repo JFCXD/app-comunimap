@@ -1,10 +1,16 @@
 package com.example.comunimap
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -22,14 +28,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
-import android.util.Log
-import androidx.compose.foundation.layout.Box
+import androidx.core.content.ContextCompat
+import com.example.comunimap.firebase.ComuniMapFirebaseMessagingService
+import com.google.firebase.messaging.FirebaseMessaging
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +46,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import com.example.comunimap.api.ApiClient
 import com.example.comunimap.components.NotificacionBanner
+import com.example.comunimap.models.GuardarTokenFcmRequest
 import com.example.comunimap.models.MarcarNotificacionRequest
 import com.example.comunimap.models.Notificacion
 import com.example.comunimap.models.Usuario
@@ -47,8 +56,10 @@ import com.example.comunimap.screens.MapaScreen
 import com.example.comunimap.screens.MasScreen
 import com.example.comunimap.screens.ReportesScreen
 import com.example.comunimap.screens.UsuariosScreen
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 // =====================================================
 // DEFINICIÓN DE PANTALLAS DE NAVEGACIÓN
@@ -88,9 +99,22 @@ private val ComuniMapColorScheme = darkColorScheme(
 
 class MainActivity : ComponentActivity() {
 
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            if (isGranted) {
+                Log.d("FCM_TOKEN", "Permiso POST_NOTIFICATIONS concedido")
+            } else {
+                Log.d("FCM_TOKEN", "Permiso POST_NOTIFICATIONS denegado")
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        ComuniMapFirebaseMessagingService.crearCanalNotificaciones(this)
+        solicitarPermisoNotificaciones()
+        obtenerTokenFCM()
 
         setContent {
             MaterialTheme(colorScheme = ComuniMapColorScheme) {
@@ -103,6 +127,30 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun solicitarPermisoNotificaciones() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    private fun obtenerTokenFCM() {
+        FirebaseMessaging.getInstance().token
+            .addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    Log.w("FCM_TOKEN", "No se pudo obtener token FCM en este entorno (ej. emulador sin sesión de Play Services): ${task.exception?.message}")
+                    return@addOnCompleteListener
+                }
+                val token = task.result
+                Log.d("FCM_TOKEN", token)
+            }
+    }
 }
 
 // =====================================================
@@ -111,6 +159,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun ComuniMapApp() {
+    val coroutineScope = rememberCoroutineScope()
     // Sesión en memoria: si es null, muestra Login; si existe, muestra la aplicación principal
     var usuarioActual by remember { mutableStateOf<Usuario?>(null) }
     var destinoActual by remember { mutableStateOf(DestinoNavegacion.INICIO) }
@@ -118,7 +167,7 @@ fun ComuniMapApp() {
     // Estado global de notificaciones internas
     var notificacionVisible by remember { mutableStateOf<Notificacion?>(null) }
     val colaNotificaciones = remember(usuarioActual?.idUsuario) { mutableStateListOf<Notificacion>() }
-    val notificacionesMostradas = remember(usuarioActual?.idUsuario) { mutableStateListOf<String>() }
+    val notificacionesMostradas = remember(usuarioActual?.idUsuario) { mutableStateListOf<Int>() }
 
     // 1. Consulta periódica cada 20 segundos de notificaciones no leídas para el usuario en sesión
     LaunchedEffect(usuarioActual?.idUsuario) {
@@ -205,6 +254,12 @@ fun ComuniMapApp() {
                 notificacionVisible = null
                 colaNotificaciones.clear()
                 notificacionesMostradas.clear()
+
+                // Enviar token FCM de forma asíncrona sin bloquear el login
+                val id = usuario.idUsuario
+                if (!id.isNullOrBlank()) {
+                    enviarTokenFcmAlServidor(id, coroutineScope)
+                }
             }
         )
     } else {
@@ -323,5 +378,57 @@ fun ComuniMapApp() {
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
+    }
+}
+
+/**
+ * Envía el token FCM actual a la API guardar_token_fcm.php para asociarlo con el usuario autenticado.
+ * Se ejecuta de manera asíncrona en segundo plano sin bloquear el flujo de inicio de sesión
+ * ni mostrar errores técnicos al usuario si Firebase o la red fallan.
+ */
+private fun enviarTokenFcmAlServidor(idUsuario: String, scope: CoroutineScope) {
+    try {
+        FirebaseMessaging.getInstance().token
+            .addOnCompleteListener { task ->
+                if (!task.isSuccessful) {
+                    Log.w(
+                        "FCM_TOKEN",
+                        "No se pudo obtener el token FCM para asociar al usuario $idUsuario: ${task.exception?.message}"
+                    )
+                    return@addOnCompleteListener
+                }
+                val token = task.result
+                if (token.isNullOrBlank()) {
+                    Log.w("FCM_TOKEN", "Token FCM obtenido está vacío, no se enviará a guardar_token_fcm.php")
+                    return@addOnCompleteListener
+                }
+
+                scope.launch {
+                    try {
+                        Log.d("FCM_TOKEN", "Enviando token FCM a guardar_token_fcm.php para idUsuario: $idUsuario")
+                        val response = ApiClient.apiService.guardarTokenFcm(
+                            GuardarTokenFcmRequest(
+                                idUsuario = idUsuario,
+                                token = token
+                            )
+                        )
+                        if (response.isSuccessful && response.body()?.success == true) {
+                            Log.d(
+                                "FCM_TOKEN",
+                                "Token FCM guardado exitosamente en el backend para usuario $idUsuario"
+                            )
+                        } else {
+                            Log.w(
+                                "FCM_TOKEN",
+                                "Error devuelto por la API al guardar token FCM: HTTP ${response.code()} - ${response.body()?.message}"
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e("FCM_TOKEN", "Excepción de red al enviar token FCM a la API: ${e.message}")
+                    }
+                }
+            }
+    } catch (e: Exception) {
+        Log.e("FCM_TOKEN", "Excepción al solicitar token a FirebaseMessaging: ${e.message}")
     }
 }

@@ -1,6 +1,10 @@
 package com.example.comunimap.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
@@ -63,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import com.example.comunimap.api.ApiClient
 import com.example.comunimap.models.Usuario
 import com.example.comunimap.utils.BASE_URL
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
 
 // =====================================================
@@ -90,12 +97,36 @@ fun MasScreen(
     usuarioActual: Usuario? = null,
     onCerrarSesion: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Estados para switches interactivos de la referencia
     var notificacionesHabilitadas by remember { mutableStateOf(true) }
     var sonidoEmergenciaHabilitado by remember { mutableStateOf(true) }
+
+    // Estado para diagnóstico temporal de token FCM
+    var tokenFcm by remember { mutableStateOf("Obteniendo token...") }
+    var isTokenReady by remember { mutableStateOf(false) }
+
+    // Obtener el token FCM al entrar a MasScreen
+    LaunchedEffect(Unit) {
+        try {
+            FirebaseMessaging.getInstance().token
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful && !task.result.isNullOrBlank()) {
+                        tokenFcm = task.result
+                        isTokenReady = true
+                    } else {
+                        tokenFcm = "No se pudo obtener el token FCM"
+                        isTokenReady = false
+                    }
+                }
+        } catch (e: Exception) {
+            tokenFcm = "No se pudo obtener el token FCM"
+            isTokenReady = false
+        }
+    }
 
     // Estados para prueba de conexión real con Railway
     var isTestingConnection by remember { mutableStateOf(false) }
@@ -427,7 +458,103 @@ fun MasScreen(
             }
 
             // =====================================================
-            // 4. BOTÓN INFERIOR: CERRAR SESIÓN
+            // 4. SECCIÓN: DIAGNÓSTICO FCM (TEMPORAL)
+            // =====================================================
+            item {
+                Text(
+                    text = "Diagnóstico FCM",
+                    color = AccentCyan,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("card_diagnostico_fcm"),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkCardBg),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Token FCM",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF0F172A))
+                                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                text = tokenFcm,
+                                color = if (isTokenReady) Color(0xFFE2E8F0) else TextMuted,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                                fontWeight = if (isTokenReady) FontWeight.Normal else FontWeight.Medium,
+                                modifier = Modifier.testTag("texto_token_fcm")
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (isTokenReady && tokenFcm.isNotBlank() && tokenFcm != "Obteniendo token..." && tokenFcm != "No se pudo obtener el token FCM") {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    val clip = ClipData.newPlainText("Token FCM", tokenFcm)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Token copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar("Token copiado al portapapeles")
+                                    }
+                                } else {
+                                    Toast.makeText(context, "No hay token disponible para copiar", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            enabled = isTokenReady,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = AccentBlue,
+                                disabledContainerColor = Color(0xFF1E293B)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .testTag("btn_copiar_token_fcm")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copiar token",
+                                tint = if (isTokenReady) Color.White else TextMuted,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Copiar token",
+                                color = if (isTokenReady) Color.White else TextMuted,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            // =====================================================
+            // 5. BOTÓN INFERIOR: CERRAR SESIÓN
             // =====================================================
             item {
                 Spacer(modifier = Modifier.height(4.dp))
