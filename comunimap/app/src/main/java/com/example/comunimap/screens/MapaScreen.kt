@@ -151,15 +151,8 @@ fun MapaScreen(
     // Referencia al MapView
     var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
 
-    // Filtrado de reportes por rol: Administrador ve todos, Usuario solo los suyos
-    val reportesVisibles = remember(reportes, esAdministrador, usuarioActual) {
-        if (esAdministrador) {
-            reportes
-        } else {
-            val uid = usuarioActual?.idUsuario?.toString() ?: ""
-            reportes.filter { it.idUsuario?.toString() == uid }
-        }
-    }
+    // En el mapa se muestran TODOS los reportes de la comunidad para todos los usuarios
+    val reportesVisibles = reportes
 
     // Consulta de los reportes y categorías reales para el mapa
     suspend fun cargarDatos() {
@@ -233,10 +226,8 @@ fun MapaScreen(
                         Text(
                             text = if (modoSeleccionUbicacion) {
                                 "Selecciona Ubicación"
-                            } else if (esAdministrador) {
-                                "Mapa de Reportes"
                             } else {
-                                "Mis Reportes en Mapa"
+                                "Mapa de Reportes"
                             },
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -244,10 +235,8 @@ fun MapaScreen(
                         Text(
                             text = if (modoSeleccionUbicacion) {
                                 "Toca el mapa para ubicar el incidente"
-                            } else if (esAdministrador) {
-                                "Todos los incidentes • Cochabamba"
                             } else {
-                                "Tus incidentes reportados • Cochabamba"
+                                "Incidentes comunitarios • Cochabamba"
                             },
                             fontSize = 11.sp,
                             color = Color(0xFF94A3B8)
@@ -587,6 +576,10 @@ fun MapaScreen(
                             else -> Color(0xFF38BDF8)
                         }
 
+                        val esReportePropio = usuarioActual?.idUsuario != null &&
+                            reporte.idUsuario != null &&
+                            reporte.idUsuario.trim() == usuarioActual.idUsuario.trim()
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -601,6 +594,24 @@ fun MapaScreen(
                                 color = colorEstado,
                                 fontSize = 12.sp
                             )
+
+                            if (esReportePropio) {
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF0284C7).copy(alpha = 0.25f))
+                                        .border(BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Tu reporte",
+                                        color = Color(0xFF38BDF8),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(6.dp))

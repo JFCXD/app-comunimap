@@ -124,12 +124,18 @@ fun LoginScreen(
                         Log.d("USUARIOS_RESPONSE", "Login exitoso para: ${body.usuario.nombre} (${body.usuario.rol})")
                         onLoginSuccess(body.usuario)
                     } else {
-                        errorMessage = body?.message ?: "Correo o contraseña incorrectos."
+                        val msg = body?.message ?: ""
+                        if (msg.contains("pendiente", ignoreCase = true) || msg.contains("aprobaci", ignoreCase = true) || msg.contains("inactiv", ignoreCase = true)) {
+                            errorMessage = "Tu cuenta está pendiente de aprobación por un administrador."
+                        } else {
+                            errorMessage = body?.message ?: "Correo o contraseña incorrectos."
+                        }
                     }
                 } else {
                     when (response.code()) {
                         400 -> errorMessage = "Completa correctamente el correo y la contraseña."
                         401 -> errorMessage = "Correo o contraseña incorrectos."
+                        403 -> errorMessage = "Tu cuenta está pendiente de aprobación por un administrador."
                         500 -> errorMessage = "No se pudo iniciar sesión. Inténtalo nuevamente."
                         else -> errorMessage = "No se pudo iniciar sesión. Inténtalo nuevamente."
                     }
@@ -370,16 +376,59 @@ fun LoginScreen(
                         }
                     }
 
-                    // Mensaje de error
+                    // Mensaje de error / estado de cuenta pendiente
                     if (errorMessage != null) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = errorMessage ?: "",
-                            color = Color(0xFFF87171),
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
-                            modifier = Modifier.testTag("login_error_text")
-                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        val esPendiente = errorMessage?.contains("pendiente de aprobación", ignoreCase = true) == true
+                        if (esPendiente) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("login_cuenta_pendiente_banner"),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF78350F).copy(alpha = 0.5f)),
+                                border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFBBF24),
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Cuenta pendiente de activación",
+                                            color = Color(0xFFFEF3C7),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = errorMessage ?: "",
+                                            color = Color(0xFFFDE68A),
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp,
+                                            modifier = Modifier.testTag("login_error_text")
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = errorMessage ?: "",
+                                color = Color(0xFFF87171),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.testTag("login_error_text")
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -698,7 +747,7 @@ fun LoginScreen(
                 email = emailRegistrado
                 password = ""
                 showRegistroDialog = false
-                registroExitosoMensaje = "Cuenta creada correctamente. Ya puedes iniciar sesión con tu correo y contraseña."
+                registroExitosoMensaje = "Cuenta creada correctamente. Tu cuenta está pendiente de aprobación por un administrador.\nPodrás iniciar sesión cuando tu cuenta haya sido activada."
                 errorMessage = null
             },
             onVerTerminos = { showTerminosDialog = true },

@@ -69,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.comunimap.api.ApiClient
+import com.example.comunimap.components.DashboardAdministrador
 import com.example.comunimap.models.Reporte
 import com.example.comunimap.models.Usuario
 import kotlinx.coroutines.launch
@@ -97,7 +98,7 @@ fun InicioScreen(
 
     // Datos reales obtenidos desde Railway
     var todosLosReportes by remember { mutableStateOf<List<Reporte>>(emptyList()) }
-    var totalUsuarios by remember { mutableIntStateOf(0) }
+    var todosLosUsuarios by remember { mutableStateOf<List<Usuario>>(emptyList()) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -116,14 +117,14 @@ fun InicioScreen(
                 errorMessage = "Error del servidor: HTTP ${respReportes.code()}"
             }
 
-            // 2. Consulta de usuarios (solo relevante para métricas de Administrador)
+            // 2. Consulta de usuarios (relevante para métricas y validación de Administrador)
             if (esAdministrador) {
                 val respUsuarios = ApiClient.apiService.obtenerUsuarios()
                 Log.d("USUARIOS_HTTP", "HTTP: ${respUsuarios.code()}")
                 if (respUsuarios.isSuccessful && respUsuarios.body()?.success == true) {
                     val uList = respUsuarios.body()?.usuarios ?: emptyList()
-                    totalUsuarios = uList.size
-                    Log.d("USUARIOS_RESPONSE", "Total usuarios reales: $totalUsuarios")
+                    todosLosUsuarios = uList
+                    Log.d("USUARIOS_RESPONSE", "Total usuarios reales: ${uList.size}")
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -247,12 +248,9 @@ fun InicioScreen(
                     // =====================================================
                     // 1. INICIO DE ADMINISTRADOR (DASHBOARD COMPLETO)
                     // =====================================================
-                    InicioAdminContent(
-                        totalReportes = todosLosReportes.size,
-                        pendientesCount = todosLosReportes.count { it.estado.equals("Pendiente", ignoreCase = true) },
-                        enProcesoCount = todosLosReportes.count { it.estado.equals("En Proceso", ignoreCase = true) },
-                        solucionadosCount = todosLosReportes.count { it.estado.equals("Solucionado", ignoreCase = true) },
-                        totalUsuarios = totalUsuarios,
+                    DashboardAdministrador(
+                        todosLosReportes = todosLosReportes,
+                        todosLosUsuarios = todosLosUsuarios,
                         onNavigateToReportes = onNavigateToReportes,
                         onNavigateToMapa = onNavigateToMapa,
                         onNavigateToUsuarios = onNavigateToUsuarios
@@ -730,245 +728,7 @@ private fun PasoAyudaItem(numero: String, texto: String) {
     }
 }
 
-// =====================================================
-// COMPONENTE: CONTENIDO INICIO PARA ADMINISTRADOR
-// =====================================================
 
-@Composable
-private fun InicioAdminContent(
-    totalReportes: Int,
-    pendientesCount: Int,
-    enProcesoCount: Int,
-    solucionadosCount: Int,
-    totalUsuarios: Int,
-    onNavigateToReportes: () -> Unit,
-    onNavigateToMapa: () -> Unit,
-    onNavigateToUsuarios: () -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
-    ) {
-        // =====================================================
-        // 1. TARJETA HERO ADMINISTRATIVA
-        // =====================================================
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(26.dp)),
-                shape = RoundedCornerShape(26.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF1E3A8A), // Azul marino
-                                    Color(0xFF3B82F6), // Azul vibrante
-                                    Color(0xFF0284C7)  // Celeste profundo
-                                )
-                            )
-                        )
-                        .padding(20.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Panel de Control",
-                                    color = Color.White,
-                                    fontSize = 24.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Gestión centralizada de incidencias y usuarios de ComuniMap.",
-                                    color = Color(0xEEFFFFFF),
-                                    fontSize = 13.sp
-                                )
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0x33FFFFFF)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationCity,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Sub-bloque informativo neutral de la comunidad (sin datos falsos de clima)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0x28FFFFFF))
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "Cochabamba, Bolivia",
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Base de datos en tiempo real",
-                                        color = Color(0xCCFFFFFF),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                                Text(
-                                    text = "$totalReportes reportes",
-                                    color = Color(0xFFBAE6FD),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // =====================================================
-        // 2. SECCIÓN: ESTADO DEL SISTEMA (TODOS LOS REPORTES)
-        // =====================================================
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Estado del Sistema",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ResumenMiniCard(
-                        titulo = "Total",
-                        cantidad = totalReportes,
-                        icono = Icons.Default.FolderOpen,
-                        colorFondo = Color(0xFFF0F4FF),
-                        colorIcono = Color(0xFF3B82F6),
-                        colorNumero = Color(0xFF1E3A8A),
-                        colorTexto = Color(0xFF475569),
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    ResumenMiniCard(
-                        titulo = "Pendientes",
-                        cantidad = pendientesCount,
-                        icono = Icons.Default.Schedule,
-                        colorFondo = Color(0xFFFEF3C7),
-                        colorIcono = Color(0xFFD97706),
-                        colorNumero = Color(0xFF92400E),
-                        colorTexto = Color(0xFF92400E),
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    ResumenMiniCard(
-                        titulo = "En Proceso",
-                        cantidad = enProcesoCount,
-                        icono = Icons.Default.Autorenew,
-                        colorFondo = Color(0xFFE0F2FE),
-                        colorIcono = Color(0xFF0284C7),
-                        colorNumero = Color(0xFF0369A1),
-                        colorTexto = Color(0xFF0369A1),
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    ResumenMiniCard(
-                        titulo = "Solucionados",
-                        cantidad = solucionadosCount,
-                        icono = Icons.Default.CheckCircle,
-                        colorFondo = Color(0xFFDCFCE7),
-                        colorIcono = Color(0xFF16A34A),
-                        colorNumero = Color(0xFF15803D),
-                        colorTexto = Color(0xFF15803D),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-
-        // =====================================================
-        // 3. ACCESOS RÁPIDOS ADMINISTRATIVOS
-        // =====================================================
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    text = "Gestión del Sistema",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    AccesoRapidoCard(
-                        titulo = "Reportes",
-                        subtitulo = "$totalReportes totales",
-                        icono = Icons.Default.Assignment,
-                        colorAcento = Color(0xFF60A5FA),
-                        onClick = onNavigateToReportes,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    AccesoRapidoCard(
-                        titulo = "Mapa",
-                        subtitulo = "Ver todos",
-                        icono = Icons.Default.Map,
-                        colorAcento = Color(0xFF34D399),
-                        onClick = onNavigateToMapa,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    AccesoRapidoCard(
-                        titulo = "Usuarios",
-                        subtitulo = "$totalUsuarios registrados",
-                        icono = Icons.Default.People,
-                        colorAcento = Color(0xFFA78BFA),
-                        onClick = onNavigateToUsuarios,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
-    }
-}
 
 // =====================================================
 // COMPONENTES AUXILIARES DE TARJETAS
@@ -1021,57 +781,4 @@ fun ResumenMiniCard(
     }
 }
 
-@Composable
-fun AccesoRapidoCard(
-    titulo: String,
-    subtitulo: String,
-    icono: ImageVector,
-    colorAcento: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .clickable { onClick() },
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCardBg),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalAlignment = Alignment.Start
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colorAcento.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icono,
-                    contentDescription = null,
-                    tint = colorAcento,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = titulo,
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitulo,
-                color = TextMuted,
-                fontSize = 11.sp,
-                maxLines = 1
-            )
-        }
-    }
-}
+

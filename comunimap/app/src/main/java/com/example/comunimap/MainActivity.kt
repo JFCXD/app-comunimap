@@ -398,7 +398,10 @@ fun ComuniMapApp(
                         )
                         DestinoNavegacion.USUARIOS -> {
                             if (esAdministrador) {
-                                UsuariosScreen()
+                                UsuariosScreen(
+                                    usuarioActual = usuarioActual,
+                                    esAdministrador = esAdministrador
+                                )
                             } else {
                                 // Protección contra accesos no autorizados
                                 destinoActual = DestinoNavegacion.INICIO
