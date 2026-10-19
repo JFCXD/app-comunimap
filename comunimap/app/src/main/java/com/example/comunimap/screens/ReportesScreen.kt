@@ -69,6 +69,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.comunimap.api.ApiClient
+import com.example.comunimap.components.SeccionEvidenciaFotografica
 import com.example.comunimap.models.ActualizarEstadoReporteRequest
 import com.example.comunimap.models.ActualizarReporteRequest
 import com.example.comunimap.models.Categoria
@@ -822,6 +823,13 @@ private fun DetalleReporteDialog(
                 Text(text = "Coordenadas: ${reporte.ubicacion ?: "N/A"}")
                 Text(text = "Categoría: ${reporte.categoria ?: "N/A"}")
                 Text(text = "Usuario reportador: ${reporte.usuario ?: (reporte.idUsuario ?: "N/A")}")
+
+                // Evidencia fotográfica (se omite automáticamente si no existe imagen)
+                SeccionEvidenciaFotografica(
+                    rutaImagen = reporte.imagen,
+                    altura = 180.dp,
+                    tituloColor = MaterialTheme.colorScheme.onSurface
+                )
             }
         },
         confirmButton = {

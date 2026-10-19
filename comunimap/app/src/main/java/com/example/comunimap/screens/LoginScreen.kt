@@ -1,8 +1,10 @@
 package com.example.comunimap.screens
 
 import android.util.Log
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,11 +24,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -38,6 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +90,11 @@ fun LoginScreen(
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var registroExitosoMensaje by remember { mutableStateOf<String?>(null) }
+
+    var showRegistroDialog by remember { mutableStateOf(false) }
+    var showTerminosDialog by remember { mutableStateOf(false) }
+    var showPrivacidadDialog by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
 
@@ -244,6 +256,7 @@ fun LoginScreen(
                         onValueChange = {
                             email = it
                             errorMessage = null
+                            registroExitosoMensaje = null
                         },
                         label = { Text("Correo Electrónico") },
                         leadingIcon = {
@@ -280,6 +293,7 @@ fun LoginScreen(
                         onValueChange = {
                             password = it
                             errorMessage = null
+                            registroExitosoMensaje = null
                         },
                         label = { Text("Contraseña") },
                         leadingIcon = {
@@ -320,6 +334,41 @@ fun LoginScreen(
                             .fillMaxWidth()
                             .testTag("login_password_input")
                     )
+
+                    // Mensaje de éxito tras registro de cuenta
+                    if (registroExitosoMensaje != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_registro_exitoso_banner"),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF064E3B).copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, Color(0xFF10B981)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF34D399),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = registroExitosoMensaje ?: "",
+                                    color = Color(0xFFD1FAE5),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
 
                     // Mensaje de error
                     if (errorMessage != null) {
@@ -371,10 +420,289 @@ fun LoginScreen(
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Opción para registrar nueva cuenta de vecino
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "¿No tienes cuenta? ",
+                            color = TextMuted,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Crear cuenta",
+                            color = AccentBlue,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            modifier = Modifier
+                                .clickable {
+                                    errorMessage = null
+                                    registroExitosoMensaje = null
+                                    showRegistroDialog = true
+                                }
+                                .padding(vertical = 4.dp)
+                                .testTag("btn_crear_cuenta")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Enlaces informativos para vecinos antes de iniciar sesión
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Términos y Condiciones",
+                            color = AccentBlue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clickable { showTerminosDialog = true }
+                                .padding(horizontal = 4.dp, vertical = 6.dp)
+                                .testTag("link_terminos_login")
+                        )
+
+                        Text(
+                            text = "•",
+                            color = TextMuted,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+
+                        Text(
+                            text = "Política de Privacidad",
+                            color = AccentBlue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clickable { showPrivacidadDialog = true }
+                                .padding(horizontal = 4.dp, vertical = 6.dp)
+                                .testTag("link_privacidad_login")
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    // =====================================================
+    // DIÁLOGO: TÉRMINOS Y CONDICIONES (LOGIN)
+    // =====================================================
+    if (showTerminosDialog) {
+        AlertDialog(
+            onDismissRequest = { showTerminosDialog = false },
+            containerColor = Color(0xFF162238),
+            titleContentColor = Color.White,
+            textContentColor = TextMuted,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF0C4A6E)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Términos y Condiciones",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Bienvenido a ComuniMap, la plataforma vecinal para Cochabamba. Al usar la aplicación aceptas los siguientes términos:",
+                        fontSize = 12.sp,
+                        color = Color(0xFFE2E8F0),
+                        lineHeight = 16.sp
+                    )
+
+                    Column {
+                        Text("1. Propósito Vecinal", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "ComuniMap permite registrar y visualizar problemas comunitarios (baches, alumbrado, basura, seguridad) en un mapa interactivo.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Column {
+                        Text("2. Veracidad de los Reportes", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "Te comprometes a subir reportes verdaderos con ubicación precisa. Queda prohibido emitir reportes falsos que movilicen cuadrillas indebidamente.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Column {
+                        Text("3. Respeto en la Comunidad", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "No se tolera lenguaje ofensivo, discriminatorio o contenido inapropiado en descripciones e imágenes.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Column {
+                        Text("4. Moderación y Autoridades", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "Los administradores supervisan las publicaciones y actualizan los estados de los incidentes conforme son atendidos.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTerminosDialog = false }) {
+                    Text("Cerrar", color = AccentBlue, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // =====================================================
+    // DIÁLOGO: POLÍTICA DE PRIVACIDAD (LOGIN)
+    // =====================================================
+    if (showPrivacidadDialog) {
+        AlertDialog(
+            onDismissRequest = { showPrivacidadDialog = false },
+            containerColor = Color(0xFF162238),
+            titleContentColor = Color.White,
+            textContentColor = TextMuted,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF064E3B)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Política de Privacidad",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "En ComuniMap la protección de la privacidad vecinal es prioritaria:",
+                        fontSize = 12.sp,
+                        color = Color(0xFFE2E8F0),
+                        lineHeight = 16.sp
+                    )
+
+                    Column {
+                        Text("1. Datos Personales", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "Solicitamos tu correo y nombre para identificar la autoría de reportes. Las credenciales están protegidas con hash criptográfico en la base de datos MySQL.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Column {
+                        Text("2. Ubicación GPS", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "Solo se utiliza para ubicar incidentes en el mapa de Cochabamba. No realizamos seguimiento pasivo ni vendemos tus coordenadas.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Column {
+                        Text("3. Alertas Push FCM", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "Tu token FCM permite que el sistema te notifique sobre emergencias o cambios de estado en reportes comunitarios.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+
+                    Column {
+                        Text("4. Cifrado HTTPS", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                        Text(
+                            "Toda comunicación hacia el servidor en Railway está protegida mediante certificados SSL/TLS seguros.",
+                            fontSize = 12.sp,
+                            color = TextMuted,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPrivacidadDialog = false }) {
+                    Text("Cerrar", color = AccentBlue, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // =====================================================
+    // DIÁLOGO: REGISTRO DE NUEVA CUENTA DE VECINO
+    // =====================================================
+    if (showRegistroDialog) {
+        RegistroDialog(
+            onDismiss = { showRegistroDialog = false },
+            onRegistroExitoso = { emailRegistrado ->
+                email = emailRegistrado
+                password = ""
+                showRegistroDialog = false
+                registroExitosoMensaje = "Cuenta creada correctamente. Ya puedes iniciar sesión con tu correo y contraseña."
+                errorMessage = null
+            },
+            onVerTerminos = { showTerminosDialog = true },
+            onVerPrivacidad = { showPrivacidadDialog = true }
+        )
     }
 }

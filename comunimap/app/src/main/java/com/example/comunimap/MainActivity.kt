@@ -27,9 +27,14 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.comunimap.firebase.ComuniMapFirebaseMessagingService
+import com.example.comunimap.utils.ModoTema
+import com.example.comunimap.utils.PreferenciasManager
 import com.google.firebase.messaging.FirebaseMessaging
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -73,12 +78,15 @@ enum class DestinoNavegacion(val titulo: String, val icono: ImageVector, val tag
     MAS("Más", Icons.Default.MoreHoriz, "nav_mas")
 }
 
-// Colores del tema para consistencia con el diseño visual oscuro / navy
+// Colores del tema para consistencia con el diseño visual oscuro / navy y claro
 private val DarkNavyBg = Color(0xFF0B132B)
 private val DarkNavBottomBar = Color(0xFF0F172A)
 private val AccentBlue = Color(0xFF3B82F6)
 
-private val ComuniMapColorScheme = darkColorScheme(
+private val LightNavyBg = Color(0xFFF1F5F9)
+private val LightNavBottomBar = Color(0xFFFFFFFF)
+
+private val ComuniMapDarkColorScheme = darkColorScheme(
     primary = AccentBlue,
     onPrimary = Color.White,
     primaryContainer = Color(0xFF1E3A8A),
@@ -91,6 +99,22 @@ private val ComuniMapColorScheme = darkColorScheme(
     background = DarkNavyBg,
     surface = Color(0xFF162238),
     onSurface = Color.White
+)
+
+private val ComuniMapLightColorScheme = lightColorScheme(
+    primary = Color(0xFF2563EB),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFDBEAFE),
+    onPrimaryContainer = Color(0xFF1E3A8A),
+    secondary = Color(0xFF0284C7),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFE0F2FE),
+    onSecondaryContainer = Color(0xFF0369A1),
+    tertiary = Color(0xFFEA580C),
+    background = Color(0xFFF8FAFC),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF0F172A),
+    onBackground = Color(0xFF0F172A)
 )
 
 // =====================================================
@@ -117,12 +141,33 @@ class MainActivity : ComponentActivity() {
         obtenerTokenFCM()
 
         setContent {
-            MaterialTheme(colorScheme = ComuniMapColorScheme) {
+            val context = LocalContext.current
+            var modoTemaActual by remember {
+                mutableStateOf(PreferenciasManager.obtenerModoTema(context))
+            }
+            val esTemaOscuroSistema = isSystemInDarkTheme()
+            val esModoOscuro = when (modoTemaActual) {
+                ModoTema.CLARO -> false
+                ModoTema.OSCURO -> true
+                ModoTema.SISTEMA -> esTemaOscuroSistema
+            }
+
+            val colorScheme = if (esModoOscuro) ComuniMapDarkColorScheme else ComuniMapLightColorScheme
+            val bgFondo = if (esModoOscuro) DarkNavyBg else LightNavyBg
+
+            MaterialTheme(colorScheme = colorScheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = DarkNavyBg
+                    color = bgFondo
                 ) {
-                    ComuniMapApp()
+                    ComuniMapApp(
+                        modoTema = modoTemaActual,
+                        esModoOscuro = esModoOscuro,
+                        onCambiarModoTema = { nuevoModo ->
+                            modoTemaActual = nuevoModo
+                            PreferenciasManager.guardarModoTema(context, nuevoModo)
+                        }
+                    )
                 }
             }
         }
@@ -158,7 +203,11 @@ class MainActivity : ComponentActivity() {
 // =====================================================
 
 @Composable
-fun ComuniMapApp() {
+fun ComuniMapApp(
+    modoTema: ModoTema = ModoTema.SISTEMA,
+    esModoOscuro: Boolean = true,
+    onCambiarModoTema: (ModoTema) -> Unit = {}
+) {
     val coroutineScope = rememberCoroutineScope()
     // Sesión en memoria: si es null, muestra Login; si existe, muestra la aplicación principal
     var usuarioActual by remember { mutableStateOf<Usuario?>(null) }
@@ -296,11 +345,11 @@ fun ComuniMapApp() {
 
         Box(modifier = Modifier.fillMaxSize()) {
             Scaffold(
-                containerColor = DarkNavyBg,
+                containerColor = if (esModoOscuro) DarkNavyBg else LightNavyBg,
                 bottomBar = {
                     NavigationBar(
-                        containerColor = DarkNavBottomBar,
-                        contentColor = Color(0xFF94A3B8),
+                        containerColor = if (esModoOscuro) DarkNavBottomBar else LightNavBottomBar,
+                        contentColor = if (esModoOscuro) Color(0xFF94A3B8) else Color(0xFF64748B),
                         modifier = Modifier.testTag("bottom_nav_bar")
                     ) {
                         destinosVisibles.forEach { destino ->
@@ -312,11 +361,11 @@ fun ComuniMapApp() {
                                 onClick = { destinoActual = destino },
                                 modifier = Modifier.testTag(destino.tag),
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.White,
-                                    selectedTextColor = Color(0xFF60A5FA),
-                                    unselectedIconColor = Color(0xFF94A3B8),
-                                    unselectedTextColor = Color(0xFF94A3B8),
-                                    indicatorColor = Color(0xFF1E293B)
+                                    selectedIconColor = if (esModoOscuro) Color.White else Color(0xFF2563EB),
+                                    selectedTextColor = if (esModoOscuro) Color(0xFF60A5FA) else Color(0xFF2563EB),
+                                    unselectedIconColor = if (esModoOscuro) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                    unselectedTextColor = if (esModoOscuro) Color(0xFF94A3B8) else Color(0xFF64748B),
+                                    indicatorColor = if (esModoOscuro) Color(0xFF1E293B) else Color(0xFFE2E8F0)
                                 )
                             )
                         }
@@ -325,7 +374,7 @@ fun ComuniMapApp() {
             ) { innerPadding ->
                 Surface(
                     modifier = Modifier.padding(innerPadding),
-                    color = DarkNavyBg
+                    color = if (esModoOscuro) DarkNavyBg else LightNavyBg
                 ) {
                     when (destinoActual) {
                         DestinoNavegacion.INICIO -> InicioScreen(
@@ -357,6 +406,9 @@ fun ComuniMapApp() {
                         }
                         DestinoNavegacion.MAS -> MasScreen(
                             usuarioActual = usuarioActual,
+                            esModoOscuro = esModoOscuro,
+                            modoTema = modoTema,
+                            onCambiarModoTema = onCambiarModoTema,
                             onCerrarSesion = {
                                 usuarioActual = null
                                 destinoActual = DestinoNavegacion.INICIO

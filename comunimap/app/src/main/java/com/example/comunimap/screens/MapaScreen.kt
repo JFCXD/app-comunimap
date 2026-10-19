@@ -1,8 +1,13 @@
 package com.example.comunimap.screens
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,8 +28,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
@@ -66,6 +76,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -73,12 +84,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import com.example.R
 import com.example.comunimap.api.ApiClient
+import com.example.comunimap.api.LaravelApiClient
+import com.example.comunimap.components.SeccionEvidenciaFotografica
 import com.example.comunimap.models.Categoria
 import com.example.comunimap.models.CrearReporteRequest
 import com.example.comunimap.models.Reporte
 import com.example.comunimap.models.Usuario
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
@@ -538,7 +558,9 @@ fun MapaScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(max = 420.dp)
                             .padding(16.dp)
+                            .verticalScroll(rememberScrollState())
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -614,6 +636,16 @@ fun MapaScreen(
                                 fontSize = 12.sp,
                                 color = Color(0xFF60A5FA),
                                 fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        // Evidencia fotográfica si el reporte contiene imagen
+                        if (!reporte.imagen.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            SeccionEvidenciaFotografica(
+                                rutaImagen = reporte.imagen,
+                                altura = 150.dp,
+                                tituloColor = Color.White
                             )
                         }
                     }
@@ -784,6 +816,7 @@ private fun FormularioCrearReporteDialog(
     onDismiss: () -> Unit,
     onReporteCreado: () -> Unit
 ) {
+    val context = LocalContext.current
     var titulo by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
     var direccion by remember { mutableStateOf("") }
@@ -800,8 +833,52 @@ private fun FormularioCrearReporteDialog(
     var formError by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
+    var imagenSeleccionada by remember { mutableStateOf<Uri?>(null) }
+    var uriFotoCamara by remember { mutableStateOf<Uri?>(null) }
+    var mostrarDialogoOrigenFoto by remember { mutableStateOf(false) }
+
+    // Launcher para capturar fotografía desde la cámara
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { exito: Boolean ->
+        if (exito && uriFotoCamara != null) {
+            imagenSeleccionada = uriFotoCamara
+        }
+    }
+
+    // Launcher para elegir imagen de la galería
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            imagenSeleccionada = uri
+        }
+    }
+
+    fun prepararCapturaFoto() {
+        try {
+            val archivoFoto = File(context.cacheDir, "foto_reporte_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                archivoFoto
+            )
+            uriFotoCamara = uri
+            takePictureLauncher.launch(uri)
+        } catch (e: Exception) {
+            Log.e("CAMERA_ERROR", "Error creando archivo para la cámara", e)
+            formError = "No se pudo abrir la cámara. Inténtalo nuevamente."
+        }
+    }
+
     AlertDialog(
-        onDismissRequest = { if (!isSubmitting) onDismiss() },
+        onDismissRequest = {
+            if (!isSubmitting) {
+                imagenSeleccionada = null
+                uriFotoCamara = null
+                onDismiss()
+            }
+        },
         containerColor = Color(0xFF1E293B),
         titleContentColor = Color.White,
         title = { Text("Nuevo Reporte", fontWeight = FontWeight.Bold) },
@@ -911,6 +988,154 @@ private fun FormularioCrearReporteDialog(
                     }
                 }
 
+                // =====================================================
+                // 6. EVIDENCIA FOTOGRÁFICA (OPCIONAL)
+                // =====================================================
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Evidencia fotográfica",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "Opcional",
+                            color = Color(0xFF38BDF8),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (imagenSeleccionada == null) {
+                        // Estado sin imagen seleccionada: botón para abrir selector
+                        OutlinedButton(
+                            onClick = { mostrarDialogoOrigenFoto = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("btn_agregar_foto_reporte"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF38BDF8)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = "Agregar fotografía",
+                                modifier = Modifier.size(20.dp),
+                                tint = Color(0xFF38BDF8)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Agregar fotografía",
+                                color = Color(0xFF38BDF8),
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        Text(
+                            text = "Puedes adjuntar una imagen como evidencia",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp
+                        )
+                    } else {
+                        // Estado con imagen seleccionada: vista previa razonable y botones
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color(0xFF0F172A))
+                                .border(1.dp, Color(0xFF334155), RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AsyncImage(
+                                model = imagenSeleccionada,
+                                contentDescription = "Vista previa de evidencia fotográfica",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .testTag("vista_previa_foto_reporte"),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
+
+                        // Acciones: Cambiar foto y Quitar
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { mostrarDialogoOrigenFoto = true },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("btn_cambiar_foto_reporte"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFF38BDF8)
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color(0xFF38BDF8)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Cambiar foto",
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    imagenSeleccionada = null
+                                    uriFotoCamara = null
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp)
+                                    .testTag("btn_quitar_foto_reporte"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFFF87171)
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Color(0xFFF87171)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Quitar",
+                                    color = Color(0xFFF87171),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if (formError != null) {
                     Text(
                         text = formError ?: "",
@@ -947,7 +1172,44 @@ private fun FormularioCrearReporteDialog(
                     coroutineScope.launch {
                         isSubmitting = true
                         formError = null
+                        var tempArchivo: File? = null
                         try {
+                            var rutaImagenSubida: String? = null
+
+                            // 1. Si el usuario seleccionó fotografía, subir primero a Laravel
+                            if (imagenSeleccionada != null) {
+                                val uri = imagenSeleccionada!!
+                                val multipartData = crearMultipartBodyPartDesdeUri(context, uri)
+                                if (multipartData == null) {
+                                    formError = "No se pudo procesar la imagen seleccionada. Inténtalo nuevamente."
+                                    isSubmitting = false
+                                    return@launch
+                                }
+                                tempArchivo = multipartData.second
+
+                                try {
+                                    Log.d("LARAVEL_UPLOAD", "Subiendo imagen a Laravel: /api/subir-imagen-reporte")
+                                    val uploadResp = LaravelApiClient.apiService.subirImagen(multipartData.first)
+                                    val uploadBody = uploadResp.body()
+
+                                    if (uploadResp.isSuccessful && uploadBody != null && uploadBody.success && !uploadBody.ruta.isNullOrBlank()) {
+                                        rutaImagenSubida = uploadBody.ruta
+                                        Log.d("LARAVEL_UPLOAD", "Imagen subida exitosamente. Ruta: $rutaImagenSubida")
+                                    } else {
+                                        Log.e("LARAVEL_UPLOAD", "Error al subir imagen: HTTP ${uploadResp.code()} - ${uploadBody?.mensaje}")
+                                        formError = "No se pudo subir la imagen. Inténtalo nuevamente."
+                                        isSubmitting = false
+                                        return@launch
+                                    }
+                                } catch (ex: Exception) {
+                                    Log.e("LARAVEL_UPLOAD", "Excepción al conectar con Laravel", ex)
+                                    formError = "No se pudo subir la imagen. Inténtalo nuevamente."
+                                    isSubmitting = false
+                                    return@launch
+                                }
+                            }
+
+                            // 2. Crear reporte en la API PHP (con imagen = rutaImagenSubida o null si no se adjuntó foto)
                             val req = CrearReporteRequest(
                                 titulo = titulo.trim(),
                                 descripcion = descripcion.trim(),
@@ -955,11 +1217,13 @@ private fun FormularioCrearReporteDialog(
                                 direccion = direccion.trim(),
                                 idUsuario = idUsuarioAutor,
                                 idCategoria = idCategoriaSeleccionada,
-                                imagen = null
+                                imagen = rutaImagenSubida
                             )
-                            Log.d("API_MUTATION", "POST crear_reporte.php autor: $idUsuarioAutor coords: $ubicacion")
+                            Log.d("API_MUTATION", "POST crear_reporte.php autor: $idUsuarioAutor coords: $ubicacion imagen: $rutaImagenSubida")
                             val resp = ApiClient.apiService.crearReporte(req)
                             if (resp.isSuccessful && resp.body()?.success == true) {
+                                imagenSeleccionada = null
+                                uriFotoCamara = null
                                 onReporteCreado()
                             } else {
                                 formError = resp.body()?.message ?: "Error al crear reporte: HTTP ${resp.code()}"
@@ -968,6 +1232,7 @@ private fun FormularioCrearReporteDialog(
                             Log.e("API_ERROR", "Error creando reporte en mapa", ex)
                             formError = "No se pudo conectar con el servidor."
                         } finally {
+                            tempArchivo?.delete()
                             isSubmitting = false
                         }
                     }
@@ -977,17 +1242,199 @@ private fun FormularioCrearReporteDialog(
             ) {
                 if (isSubmitting) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Creando...", color = Color.White)
                 } else {
                     Text("Crear Reporte", color = Color.White)
                 }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
+            TextButton(
+                onClick = {
+                    imagenSeleccionada = null
+                    uriFotoCamara = null
+                    onDismiss()
+                },
+                enabled = !isSubmitting
+            ) {
                 Text("Cancelar", color = Color(0xFF94A3B8))
             }
         }
     )
+
+    // Diálogo para seleccionar el origen de la fotografía (Tomar foto / Elegir de galería)
+    if (mostrarDialogoOrigenFoto) {
+        AlertDialog(
+            onDismissRequest = { mostrarDialogoOrigenFoto = false },
+            containerColor = Color(0xFF1E293B),
+            titleContentColor = Color.White,
+            title = {
+                Text(
+                    text = "Seleccionar fotografía",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Elige de dónde deseas obtener la evidencia fotográfica:",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 13.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 1. Tomar foto
+                    Card(
+                        onClick = {
+                            mostrarDialogoOrigenFoto = false
+                            prepararCapturaFoto()
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("opcion_tomar_foto"),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                        border = BorderStroke(1.dp, Color(0xFF334155)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF0284C7).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Tomar foto",
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Tomar foto",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    text = "Abrir la cámara del dispositivo",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. Elegir de galería
+                    Card(
+                        onClick = {
+                            mostrarDialogoOrigenFoto = false
+                            imagePickerLauncher.launch("image/*")
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("opcion_elegir_galeria"),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                        border = BorderStroke(1.dp, Color(0xFF334155)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF0D9488).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoLibrary,
+                                    contentDescription = "Elegir de galería",
+                                    tint = Color(0xFF2DD4BF),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(
+                                    text = "Elegir de galería",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp
+                                )
+                                Text(
+                                    text = "Seleccionar de fotos guardadas",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = { mostrarDialogoOrigenFoto = false }
+                ) {
+                    Text("Cancelar", color = Color(0xFF94A3B8))
+                }
+            }
+        )
+    }
+}
+
+// Función auxiliar para preparar un archivo temporal en cacheDir y generar MultipartBody.Part desde un Uri
+private fun crearMultipartBodyPartDesdeUri(
+    context: Context,
+    uri: Uri,
+    partName: String = "imagen"
+): Pair<MultipartBody.Part, File>? {
+    val contentResolver = context.contentResolver
+    val mimeType = contentResolver.getType(uri) ?: "image/jpeg"
+    val extension = when {
+        mimeType.contains("png", ignoreCase = true) -> ".png"
+        mimeType.contains("webp", ignoreCase = true) -> ".webp"
+        mimeType.contains("gif", ignoreCase = true) -> ".gif"
+        else -> ".jpg"
+    }
+
+    val fileName = "imagen_reporte_${System.currentTimeMillis()}$extension"
+    val tempFile = File(context.cacheDir, fileName)
+
+    return try {
+        contentResolver.openInputStream(uri)?.use { inputStream ->
+            FileOutputStream(tempFile).use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+        } ?: return null
+
+        val mediaType = mimeType.toMediaTypeOrNull() ?: "image/*".toMediaTypeOrNull()
+        val requestBody = tempFile.asRequestBody(mediaType)
+        Pair(MultipartBody.Part.createFormData(partName, fileName, requestBody), tempFile)
+    } catch (e: Exception) {
+        Log.e("IMAGEN_MULTIPART", "Error preparando MultipartBody.Part desde Uri", e)
+        tempFile.delete()
+        null
+    }
 }
 
 // Función auxiliar para dibujar los marcadores de reportes reales con sus colores según estado
