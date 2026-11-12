@@ -23,6 +23,12 @@ data class CrearUsuarioRequest(
     @Json(name = "nombre")
     val nombre: String,
 
+    @Json(name = "apellido")
+    val apellido: String? = null,
+
+    @Json(name = "fechaNacimiento")
+    val fechaNacimiento: String? = null,
+
     @Json(name = "email")
     val email: String,
 
@@ -44,6 +50,12 @@ data class ActualizarUsuarioRequest(
 
     @Json(name = "nombre")
     val nombre: String,
+
+    @Json(name = "apellido")
+    val apellido: String? = null,
+
+    @Json(name = "fechaNacimiento")
+    val fechaNacimiento: String? = null,
 
     @Json(name = "email")
     val email: String,
@@ -127,3 +139,40 @@ data class ActualizarEstadoReporteRequest(
     @Json(name = "estado")
     val estado: String
 )
+
+// =====================================================
+// MODELOS PARA ACTUALIZAR ESTADO DE CASO AGRUPADO (GRUPO)
+// =====================================================
+
+// Petición para cambiar estado de caso agrupado: POST actualizar_estado_grupo.php
+@JsonClass(generateAdapter = true)
+data class ActualizarEstadoGrupoRequest(
+    @Json(name = "idReporte")
+    val idReporte: Int,
+
+    @Json(name = "estado")
+    val estado: String
+)
+
+// Respuesta del endpoint actualizar_estado_grupo.php
+@JsonClass(generateAdapter = true)
+data class ActualizarEstadoGrupoResponse(
+    @Json(name = "success")
+    val success: Boolean,
+
+    @Json(name = "message")
+    val message: String? = null,
+
+    @Json(name = "idReporte")
+    val idReporte: Any? = null,
+
+    @Json(name = "estado")
+    val estado: String? = null,
+
+    @Json(name = "cantidadReportes")
+    val cantidadReportes: Int? = null,
+
+    @Json(name = "cantidadVecinos")
+    val cantidadVecinos: Int? = null
+)
+

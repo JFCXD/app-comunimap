@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -42,14 +44,13 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -91,7 +92,8 @@ fun InicioScreen(
     esAdministrador: Boolean = false,
     onNavigateToReportes: () -> Unit,
     onNavigateToMapa: () -> Unit,
-    onNavigateToUsuarios: () -> Unit = {}
+    onNavigateToUsuarios: () -> Unit = {},
+    onNavigateToComunidad: () -> Unit = {}
 ) {
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -143,22 +145,37 @@ fun InicioScreen(
 
     Scaffold(
         containerColor = DarkNavyBg,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DarkNavyBg)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 8.dp, top = 5.dp, bottom = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(32.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF0F172A)),
+                                .background(Color(0xFF0F1E3A))
+                                .border(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.65f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.LocationOn,
                                 contentDescription = null,
                                 tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
@@ -166,37 +183,48 @@ fun InicioScreen(
                             Text(
                                 text = "ComuniMap",
                                 color = Color(0xFF60A5FA),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 18.sp,
+                                lineHeight = 20.sp
                             )
                             Text(
-                                text = if (esAdministrador) "PANEL DE ADMINISTRACIÓN" else "MAPA INTERACTIVO • Tu Barrio",
+                                text = if (esAdministrador) "CENTRO DE CONTROL • ADMINISTRACIÓN" else "MAPA INTERACTIVO • Tu Barrio",
                                 color = TextMuted,
-                                fontSize = 10.sp,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                letterSpacing = 0.8.sp
+                                letterSpacing = 0.9.sp,
+                                lineHeight = 11.sp
                             )
                         }
                     }
-                },
-                actions = {
+
                     IconButton(
                         onClick = { coroutineScope.launch { cargarEstadisticas() } },
                         enabled = !isLoading,
                         modifier = Modifier.testTag("inicio_refresh_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Recargar estadísticas",
-                            tint = Color(0xFF60A5FA)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(DarkCardBg)
+                                .border(1.dp, Color(0xFF1E293B), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Recargar estadísticas",
+                                tint = Color(0xFF60A5FA),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkNavyBg,
-                    titleContentColor = Color.White
+                }
+                HorizontalDivider(
+                    color = Color(0xFF1E293B).copy(alpha = 0.7f),
+                    thickness = 1.dp
                 )
-            )
+            }
         }
     ) { innerPadding ->
         Box(
@@ -253,7 +281,8 @@ fun InicioScreen(
                         todosLosUsuarios = todosLosUsuarios,
                         onNavigateToReportes = onNavigateToReportes,
                         onNavigateToMapa = onNavigateToMapa,
-                        onNavigateToUsuarios = onNavigateToUsuarios
+                        onNavigateToUsuarios = onNavigateToUsuarios,
+                        onNavigateToComunidad = onNavigateToComunidad
                     )
                 } else {
                     // =====================================================
@@ -301,9 +330,9 @@ private fun InicioUsuarioContent(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-        contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(top = 10.dp, bottom = 24.dp)
     ) {
         // =====================================================
         // 1. ENCABEZADO DEL USUARIO

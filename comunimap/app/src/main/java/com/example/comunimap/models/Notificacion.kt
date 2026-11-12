@@ -18,6 +18,9 @@ data class Notificacion(
     @Json(name = "idReporte")
     val idReporte: Int?,
 
+    @Json(name = "idPublicacion")
+    val idPublicacion: Any? = null,
+
     @Json(name = "titulo")
     val titulo: String,
 
@@ -32,4 +35,11 @@ data class Notificacion(
 
     @Json(name = "fecha")
     val fecha: String
-)
+) {
+    val idPublicacionInt: Int?
+        get() = when (idPublicacion) {
+            is Number -> idPublicacion.toInt()
+            is String -> idPublicacion.toIntOrNull()
+            else -> null
+        }
+}

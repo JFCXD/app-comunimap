@@ -1,5 +1,6 @@
 package com.example.comunimap.screens
 
+import android.app.DatePickerDialog
 import android.util.Log
 import android.util.Patterns
 import androidx.compose.foundation.clickable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -33,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,8 +58,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.comunimap.api.ApiClient
 import com.example.comunimap.models.CrearUsuarioRequest
+import com.example.comunimap.utils.FechaUtils
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.util.Calendar
 
 // Paleta visual consistente con el tema navy de ComuniMap
 private val DarkCardBg = Color(0xFF162238)
@@ -80,7 +86,12 @@ fun RegistroDialog(
     onVerTerminos: () -> Unit,
     onVerPrivacidad: () -> Unit
 ) {
+    val context = LocalContext.current
+
     var nombre by remember { mutableStateOf("") }
+    var apellido by remember { mutableStateOf("") }
+    var fechaNacimiento by remember { mutableStateOf("") } // Formato ISO "YYYY-MM-DD"
+    var fechaNacimientoVisual by remember { mutableStateOf("") } // Formato visual "DD/MM/YYYY"
     var email by remember { mutableStateOf("") }
     var telefono by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -126,11 +137,23 @@ fun RegistroDialog(
         if (isSubmitting) return
 
         val nom = nombre.trim()
+        val ape = apellido.trim()
+        val fechaNac = fechaNacimiento.trim()
         val correo = email.trim()
         val tel = telefono.trim()
 
         if (nom.isBlank()) {
             formError = "Ingresa tu nombre"
+            return
+        }
+
+        if (ape.isBlank()) {
+            formError = "Ingresa tu apellido"
+            return
+        }
+
+        if (fechaNac.isBlank()) {
+            formError = "Selecciona tu fecha de nacimiento"
             return
         }
 
@@ -171,6 +194,8 @@ fun RegistroDialog(
                 // Rol fijado siempre a "Usuario" para registro vecinal público
                 val request = CrearUsuarioRequest(
                     nombre = nom,
+                    apellido = ape,
+                    fechaNacimiento = fechaNac,
                     email = correo,
                     password = password,
                     telefono = tel,
@@ -261,7 +286,7 @@ fun RegistroDialog(
                         nombre = it
                         formError = null
                     },
-                    label = { Text("Nombre completo *") },
+                    label = { Text("Nombre *") },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Person,
@@ -287,6 +312,131 @@ fun RegistroDialog(
                         .fillMaxWidth()
                         .testTag("registro_nombre_input")
                 )
+
+                // Campo: Apellido
+                OutlinedTextField(
+                    value = apellido,
+                    onValueChange = {
+                        if (it.length <= 150) {
+                            apellido = it
+                            formError = null
+                        }
+                    },
+                    label = { Text("Apellido *") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = AccentBlue
+                        )
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Next
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentBlue,
+                        unfocusedBorderColor = BorderColor,
+                        focusedLabelColor = AccentBlue,
+                        unfocusedLabelColor = TextMuted,
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("registro_apellido_input")
+                )
+
+                // Campo: Fecha de Nacimiento con selector nativo DatePickerDialog
+                val abrirDatePicker = {
+                    val cal = Calendar.getInstance()
+                    if (fechaNacimiento.isNotBlank()) {
+                        val parts = fechaNacimiento.split("-")
+                        if (parts.size == 3) {
+                            val y = parts[0].toIntOrNull()
+                            val m = parts[1].toIntOrNull()
+                            val d = parts[2].toIntOrNull()
+                            if (y != null && m != null && d != null) {
+                                cal.set(y, m - 1, d)
+                            }
+                        }
+                    } else {
+                        cal.add(Calendar.YEAR, -20)
+                    }
+                    val dpd = DatePickerDialog(
+                        context,
+                        { _, y, m, d ->
+                            val mesReal = m + 1
+                            fechaNacimiento = FechaUtils.formatearFechaIso(y, mesReal, d)
+                            fechaNacimientoVisual = FechaUtils.formatearFechaVisual(y, mesReal, d)
+                            formError = null
+                        },
+                        cal.get(Calendar.YEAR),
+                        cal.get(Calendar.MONTH),
+                        cal.get(Calendar.DAY_OF_MONTH)
+                    )
+                    dpd.datePicker.maxDate = System.currentTimeMillis()
+                    dpd.show()
+                }
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = fechaNacimientoVisual,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Fecha de nacimiento *") },
+                        placeholder = { Text("DD/MM/AAAA", color = TextMuted) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.DateRange,
+                                contentDescription = null,
+                                tint = AccentBlue
+                            )
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = abrirDatePicker) {
+                                Icon(
+                                    imageVector = Icons.Default.DateRange,
+                                    contentDescription = "Seleccionar fecha de nacimiento",
+                                    tint = AccentBlue
+                                )
+                            }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentBlue,
+                            unfocusedBorderColor = BorderColor,
+                            focusedLabelColor = AccentBlue,
+                            unfocusedLabelColor = TextMuted,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { abrirDatePicker() }
+                            .testTag("registro_fecha_nacimiento_input")
+                    )
+
+                    val edadCalculada = FechaUtils.calcularEdad(fechaNacimiento)
+                    if (edadCalculada != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = AccentBlue.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AccentBlue.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "Edad calculada: $edadCalculada años",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AccentBlue,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
 
                 // Campo: Correo Electrónico
                 OutlinedTextField(

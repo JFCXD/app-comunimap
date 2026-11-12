@@ -1,5 +1,7 @@
 package com.example.comunimap.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -8,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,8 +58,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,24 +72,30 @@ import androidx.compose.ui.unit.sp
 import com.example.comunimap.api.ApiClient
 import com.example.comunimap.models.LoginRequest
 import com.example.comunimap.models.Usuario
+import com.example.comunimap.utils.PreferenciasManager
 import kotlinx.coroutines.launch
 
 // =====================================================
 // PANTALLA: INICIO DE SESIÓN (LOGIN)
 // =====================================================
 
-// Colores del tema visual oscuro / navy según la captura de referencia
-private val DarkNavyBg = Color(0xFF0B132B)
-private val DarkCardBg = Color(0xFF162238)
+// URL oficial para recuperación de contraseña alojada en Laravel (Railway)
+private const val URL_RECUPERACION_CONTRASENA = "https://comunimap-production.up.railway.app/recuperar-clave"
+
+// Colores del tema visual oscuro / navy inspirados en la versión web (Imagen 2)
+private val DarkNavyBg = Color(0xFF070E1F)
+private val DarkCardBg = Color(0xFF0E182D)
+private val DarkFieldBg = Color(0xFF091224)
 private val AccentBlue = Color(0xFF60A5FA)
 private val AccentBlueButton = Color(0xFF3B82F6)
 private val TextMuted = Color(0xFF94A3B8)
-private val BorderColor = Color(0xFF334155)
+private val BorderColor = Color(0xFF1F3252)
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (Usuario) -> Unit
+    onLoginSuccess: (Usuario, String?) -> Unit
 ) {
+    val context = LocalContext.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -122,7 +134,11 @@ fun LoginScreen(
                     val body = response.body()
                     if (body != null && body.success && body.usuario != null) {
                         Log.d("USUARIOS_RESPONSE", "Login exitoso para: ${body.usuario.nombre} (${body.usuario.rol})")
-                        onLoginSuccess(body.usuario)
+                        // Guardar token administrativo localmente si está presente
+                        if (!body.tokenApi.isNullOrBlank()) {
+                            PreferenciasManager.guardarTokenApi(context, body.tokenApi)
+                        }
+                        onLoginSuccess(body.usuario, body.tokenApi)
                     } else {
                         val msg = body?.message ?: ""
                         if (msg.contains("pendiente", ignoreCase = true) || msg.contains("aprobaci", ignoreCase = true) || msg.contains("inactiv", ignoreCase = true)) {
@@ -167,179 +183,245 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 22.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // =====================================================
-            // LOGO CIRCULAR DE COMUNIMAP
-            // =====================================================
-            Box(
-                modifier = Modifier
-                    .size(90.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF0F172A))
-                    .border(2.dp, Color(0xFF38BDF8), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = "Logo ComuniMap",
-                    tint = Color(0xFF38BDF8),
-                    modifier = Modifier.size(52.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            // Título
-            Text(
-                text = "ComuniMap",
-                color = AccentBlue,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            // Subtítulo
-            Text(
-                text = "MAPA INTERACTIVO",
-                color = AccentBlue,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Slogan
-            Text(
-                text = "Tu barrio, tu reporte, un mejor futuro.",
-                color = TextMuted,
-                fontSize = 14.sp
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // =====================================================
-            // TARJETA DE CREDENCIALES
-            // =====================================================
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("login_card"),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkCardBg),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                    .widthIn(max = 420.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // =====================================================
+                // ENCABEZADO DE MARCA ESTILO WEB (IMAGEN 2)
+                // =====================================================
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF060E20))
+                            .border(2.dp, Color(0xFF38BDF8), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Logo ComuniMap",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(horizontalAlignment = Alignment.Start) {
+                        Text(
+                            text = "ComuniMap",
+                            color = AccentBlue,
+                            fontSize = 31.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = (-0.5).sp,
+                            lineHeight = 33.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "MAPA INTERACTIVO",
+                            color = Color(0xFF93C5FD),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.4.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Box(
+                    modifier = Modifier
+                        .width(140.dp)
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0xFF38BDF8),
+                                    Color(0xFF3B82F6),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Tu barrio, tu reporte, un mejor futuro.",
+                    color = TextMuted,
+                    fontSize = 13.sp
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // =====================================================
+                // TARJETA DE CREDENCIALES
+                // =====================================================
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp)
+                        .testTag("login_card"),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkCardBg),
+                    border = BorderStroke(1.dp, Color(0xFF1D3154)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
-                    Text(
-                        text = "Bienvenido",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Text(
-                        text = "Ingresa tus credenciales para continuar",
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Campo: Correo Electrónico
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = {
-                            email = it
-                            errorMessage = null
-                            registroExitosoMensaje = null
-                        },
-                        label = { Text("Correo Electrónico") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Email,
-                                contentDescription = null,
-                                tint = AccentBlue
-                            )
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentBlue,
-                            unfocusedBorderColor = BorderColor,
-                            focusedLabelColor = AccentBlue,
-                            unfocusedLabelColor = TextMuted,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("login_email_input")
-                    )
+                            .padding(horizontal = 22.dp, vertical = 24.dp)
+                    ) {
+                        Text(
+                            text = "Bienvenido",
+                            color = Color.White,
+                            fontSize = 23.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
 
-                    // Campo: Contraseña
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            errorMessage = null
-                            registroExitosoMensaje = null
-                        },
-                        label = { Text("Contraseña") },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = AccentBlue
-                            )
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Text(
+                            text = "Ingresa tus credenciales para continuar",
+                            color = TextMuted,
+                            fontSize = 13.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // Campo: Correo Electrónico
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = {
+                                email = it
+                                errorMessage = null
+                                registroExitosoMensaje = null
+                            },
+                            label = { Text("Correo Electrónico") },
+                            leadingIcon = {
                                 Icon(
-                                    imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
-                                    tint = TextMuted
+                                    imageVector = Icons.Default.Email,
+                                    contentDescription = null,
+                                    tint = AccentBlue
                                 )
-                            }
-                        },
-                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = { ejecutarLogin() }
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = AccentBlue,
-                            unfocusedBorderColor = BorderColor,
-                            focusedLabelColor = AccentBlue,
-                            unfocusedLabelColor = TextMuted,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        ),
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Email,
+                                imeAction = ImeAction.Next
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = AccentBlue,
+                                unfocusedBorderColor = BorderColor,
+                                focusedContainerColor = DarkFieldBg,
+                                unfocusedContainerColor = DarkFieldBg,
+                                focusedLabelColor = AccentBlue,
+                                unfocusedLabelColor = TextMuted,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_email_input")
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Campo: Contraseña
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = {
+                                password = it
+                                errorMessage = null
+                                registroExitosoMensaje = null
+                            },
+                            label = { Text("Contraseña") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = AccentBlue
+                                )
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña",
+                                        tint = TextMuted
+                                    )
+                                }
+                            },
+                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { ejecutarLogin() }
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = AccentBlue,
+                                unfocusedBorderColor = BorderColor,
+                                focusedContainerColor = DarkFieldBg,
+                                unfocusedContainerColor = DarkFieldBg,
+                                focusedLabelColor = AccentBlue,
+                                unfocusedLabelColor = TextMuted,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("login_password_input")
+                        )
+
+                    // Enlace: ¿Olvidaste tu contraseña? (Recuperación mediante Laravel en navegador externo)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("login_password_input")
-                    )
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(URL_RECUPERACION_CONTRASENA))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Log.e("LOGIN_RECUPERAR", "No se pudo abrir el navegador para recuperar clave", e)
+                                    errorMessage = "No se pudo abrir el navegador web para recuperar tu contraseña."
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                            modifier = Modifier.testTag("btn_olvidaste_contrasena")
+                        ) {
+                            Text(
+                                text = "¿Olvidaste tu contraseña?",
+                                color = AccentBlue,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
 
                     // Mensaje de éxito tras registro de cuenta
                     if (registroExitosoMensaje != null) {
@@ -431,7 +513,7 @@ fun LoginScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     // Botón: Iniciar Sesión
                     Button(
@@ -440,10 +522,10 @@ fun LoginScreen(
                         colors = ButtonDefaults.buttonColors(
                             containerColor = AccentBlueButton
                         ),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp)
+                            .height(50.dp)
                             .testTag("btn_iniciar_sesion")
                     ) {
                         if (isLoading) {
@@ -465,7 +547,7 @@ fun LoginScreen(
                                 text = "Iniciar Sesión",
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                                fontSize = 15.5.sp
                             )
                         }
                     }
@@ -481,13 +563,13 @@ fun LoginScreen(
                         Text(
                             text = "¿No tienes cuenta? ",
                             color = TextMuted,
-                            fontSize = 14.sp
+                            fontSize = 13.5.sp
                         )
                         Text(
                             text = "Crear cuenta",
                             color = AccentBlue,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             modifier = Modifier
                                 .clickable {
                                     errorMessage = null
@@ -499,7 +581,7 @@ fun LoginScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Enlaces informativos para vecinos antes de iniciar sesión
                     Row(
@@ -539,7 +621,8 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+            }
         }
     }
 

@@ -11,10 +11,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -31,6 +33,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.example.comunimap.firebase.ComuniMapFirebaseMessagingService
 import com.example.comunimap.utils.ModoTema
@@ -38,10 +41,13 @@ import com.example.comunimap.utils.PreferenciasManager
 import com.google.firebase.messaging.FirebaseMessaging
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +61,7 @@ import com.example.comunimap.models.GuardarTokenFcmRequest
 import com.example.comunimap.models.MarcarNotificacionRequest
 import com.example.comunimap.models.Notificacion
 import com.example.comunimap.models.Usuario
+import com.example.comunimap.screens.ComunidadScreen
 import com.example.comunimap.screens.InicioScreen
 import com.example.comunimap.screens.LoginScreen
 import com.example.comunimap.screens.MapaScreen
@@ -72,6 +79,7 @@ import kotlinx.coroutines.launch
 
 enum class DestinoNavegacion(val titulo: String, val icono: ImageVector, val tag: String) {
     INICIO("Inicio", Icons.Default.Home, "nav_inicio"),
+    COMUNIDAD("Comunid", Icons.Default.Groups, "nav_comunidad"),
     REPORTES("Reportes", Icons.Default.FormatListBulleted, "nav_reportes"),
     MAPA("Mapa", Icons.Default.Map, "nav_mapa"),
     USUARIOS("Usuarios", Icons.Default.People, "nav_usuarios"),
@@ -123,6 +131,8 @@ private val ComuniMapLightColorScheme = lightColorScheme(
 
 class MainActivity : ComponentActivity() {
 
+    private val notificationIntentFlow = MutableStateFlow<Intent?>(null)
+
     private val requestNotificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
             if (isGranted) {
@@ -139,6 +149,9 @@ class MainActivity : ComponentActivity() {
         ComuniMapFirebaseMessagingService.crearCanalNotificaciones(this)
         solicitarPermisoNotificaciones()
         obtenerTokenFCM()
+
+        // Capturar intent inicial si la app fue abierta desde una notificación con la app cerrada
+        notificationIntentFlow.value = intent
 
         setContent {
             val context = LocalContext.current
@@ -166,11 +179,28 @@ class MainActivity : ComponentActivity() {
                         onCambiarModoTema = { nuevoModo ->
                             modoTemaActual = nuevoModo
                             PreferenciasManager.guardarModoTema(context, nuevoModo)
-                        }
+                        },
+                        notificationIntentFlow = notificationIntentFlow,
+                        onClearNotificationIntent = { limpiarNotificationIntent() }
                     )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Disparar nuevo intent si la app ya estaba abierta o en segundo plano
+        notificationIntentFlow.value = intent
+    }
+
+    private fun limpiarNotificationIntent() {
+        notificationIntentFlow.value = null
+        intent?.removeExtra("tipo")
+        intent?.removeExtra("idPublicacion")
+        intent?.removeExtra("idNotificacion")
+        intent?.removeExtra("idReporte")
     }
 
     private fun solicitarPermisoNotificaciones() {
@@ -206,17 +236,59 @@ class MainActivity : ComponentActivity() {
 fun ComuniMapApp(
     modoTema: ModoTema = ModoTema.SISTEMA,
     esModoOscuro: Boolean = true,
-    onCambiarModoTema: (ModoTema) -> Unit = {}
+    onCambiarModoTema: (ModoTema) -> Unit = {},
+    notificationIntentFlow: StateFlow<Intent?>? = null,
+    onClearNotificationIntent: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     // Sesión en memoria: si es null, muestra Login; si existe, muestra la aplicación principal
     var usuarioActual by remember { mutableStateOf<Usuario?>(null) }
+    var tokenApiActual by remember { mutableStateOf<String?>(PreferenciasManager.obtenerTokenApi(context)) }
     var destinoActual by remember { mutableStateOf(DestinoNavegacion.INICIO) }
+    var origenComunidadAdmin by remember { mutableStateOf(DestinoNavegacion.MAS) }
 
     // Estado global de notificaciones internas
     var notificacionVisible by remember { mutableStateOf<Notificacion?>(null) }
     val colaNotificaciones = remember(usuarioActual?.idUsuario) { mutableStateListOf<Notificacion>() }
     val notificacionesMostradas = remember(usuarioActual?.idUsuario) { mutableStateListOf<Int>() }
+
+    // Publicación objetivo para navegación directa desde notificación
+    var idPublicacionObjetivo by remember { mutableStateOf<Int?>(null) }
+    var publicacionPendienteLogin by remember { mutableStateOf<Int?>(null) }
+
+    // Reporte objetivo para enfocar en el mapa (incluyendo reportes solucionados temporales)
+    var idReporteParaMapa by remember { mutableStateOf<String?>(null) }
+
+    // Intent reactivo de notificaciones del sistema
+    val notifIntent by (notificationIntentFlow ?: remember { MutableStateFlow(null) }).collectAsState()
+
+    // Manejar clics en notificaciones del sistema (app en primer plano, fondo o abierta desde icono)
+    LaunchedEffect(notifIntent, usuarioActual?.idUsuario) {
+        val currentIntent = notifIntent ?: return@LaunchedEffect
+        val tipo = currentIntent.getStringExtra("tipo") ?: ""
+        val idPubRaw = currentIntent.getStringExtra("idPublicacion")
+            ?: currentIntent.getIntExtra("idPublicacion", -1).takeIf { it > 0 }?.toString()
+        val idPub = idPubRaw?.toIntOrNull()
+
+        if (tipo.trim().equals("COMUNIDAD", ignoreCase = true) && idPub != null && idPub > 0) {
+            val currentUser = usuarioActual
+            val esAdmin = currentUser?.rol?.trim()?.equals("Administrador", ignoreCase = true) == true
+            if (currentUser != null) {
+                if (!esAdmin) {
+                    Log.d("NOTIFICACIONES", "Intent COMUNIDAD recibido para publicación $idPub. Navegando a COMUNIDAD.")
+                    destinoActual = DestinoNavegacion.COMUNIDAD
+                    idPublicacionObjetivo = idPub
+                } else {
+                    Log.d("NOTIFICACIONES", "Intent COMUNIDAD descartado porque el usuario autenticado es Administrador.")
+                }
+            } else {
+                Log.d("NOTIFICACIONES", "Intent COMUNIDAD recibido sin sesión iniciada. Se reserva publicación $idPub para después del login.")
+                publicacionPendienteLogin = idPub
+            }
+        }
+        onClearNotificationIntent()
+    }
 
     // 1. Consulta periódica cada 20 segundos de notificaciones no leídas para el usuario en sesión
     LaunchedEffect(usuarioActual?.idUsuario) {
@@ -297,12 +369,26 @@ fun ComuniMapApp(
         // PANTALLA DE LOGIN
         // -------------------------------------------------
         LoginScreen(
-            onLoginSuccess = { usuario ->
+            onLoginSuccess = { usuario, token ->
                 usuarioActual = usuario
-                destinoActual = DestinoNavegacion.INICIO
+                tokenApiActual = token
                 notificacionVisible = null
                 colaNotificaciones.clear()
                 notificacionesMostradas.clear()
+
+                // Guardar sesión en preferencias para que el servicio de FCM conozca rol e idUsuario
+                PreferenciasManager.guardarSesionUsuario(context, usuario.idUsuario, usuario.rol)
+
+                val esAdmin = usuario.rol?.trim()?.equals("Administrador", ignoreCase = true) == true
+                if (!esAdmin && publicacionPendienteLogin != null && publicacionPendienteLogin!! > 0) {
+                    val pendingPub = publicacionPendienteLogin
+                    publicacionPendienteLogin = null
+                    destinoActual = DestinoNavegacion.COMUNIDAD
+                    idPublicacionObjetivo = pendingPub
+                } else {
+                    publicacionPendienteLogin = null
+                    destinoActual = DestinoNavegacion.INICIO
+                }
 
                 // Enviar token FCM de forma asíncrona sin bloquear el login
                 val id = usuario.idUsuario
@@ -327,11 +413,25 @@ fun ComuniMapApp(
             destinoActual = DestinoNavegacion.INICIO
         }
 
-        // Pestañas visibles: Usuario ve [Inicio, Reportes, Mapa, Más]; Administrador ve además [Usuarios]
+        // Pestañas visibles según rol:
+        // - Vecino (Usuario): [Inicio, Comunidad, Reportes, Mapa, Más] (5 pestañas en la barra inferior)
+        // - Administrador: [Inicio, Reportes, Mapa, Usuarios, Más] (5 pestañas en la barra inferior, Comunidad accesible desde Más)
         val destinosVisibles = if (esAdministrador) {
-            DestinoNavegacion.values().toList()
+            listOf(
+                DestinoNavegacion.INICIO,
+                DestinoNavegacion.REPORTES,
+                DestinoNavegacion.MAPA,
+                DestinoNavegacion.USUARIOS,
+                DestinoNavegacion.MAS
+            )
         } else {
-            DestinoNavegacion.values().filter { it != DestinoNavegacion.USUARIOS }
+            listOf(
+                DestinoNavegacion.INICIO,
+                DestinoNavegacion.COMUNIDAD,
+                DestinoNavegacion.REPORTES,
+                DestinoNavegacion.MAPA,
+                DestinoNavegacion.MAS
+            )
         }
 
         // -------------------------------------------------
@@ -339,7 +439,11 @@ fun ComuniMapApp(
         // -------------------------------------------------
         if (destinoActual != DestinoNavegacion.INICIO) {
             BackHandler {
-                destinoActual = DestinoNavegacion.INICIO
+                destinoActual = if (destinoActual == DestinoNavegacion.COMUNIDAD && esAdministrador) {
+                    origenComunidadAdmin
+                } else {
+                    DestinoNavegacion.INICIO
+                }
             }
         }
 
@@ -353,12 +457,19 @@ fun ComuniMapApp(
                         modifier = Modifier.testTag("bottom_nav_bar")
                     ) {
                         destinosVisibles.forEach { destino ->
-                            val isSelected = destinoActual == destino
+                            val isSelected = destinoActual == destino ||
+                                (destino == origenComunidadAdmin && destinoActual == DestinoNavegacion.COMUNIDAD && esAdministrador)
                             NavigationBarItem(
                                 icon = { Icon(destino.icono, contentDescription = destino.titulo) },
-                                label = { Text(destino.titulo) },
+                                label = { Text(text = destino.titulo, maxLines = 1) },
                                 selected = isSelected,
-                                onClick = { destinoActual = destino },
+                                onClick = {
+                                    if (destino == DestinoNavegacion.MAPA) {
+                                        // Si el usuario entra normalmente al mapa desde la barra inferior, se limpia la selección temporal
+                                        idReporteParaMapa = null
+                                    }
+                                    destinoActual = destino
+                                },
                                 modifier = Modifier.testTag(destino.tag),
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = if (esModoOscuro) Color.White else Color(0xFF2563EB),
@@ -373,7 +484,10 @@ fun ComuniMapApp(
                 }
             ) { innerPadding ->
                 Surface(
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding),
                     color = if (esModoOscuro) DarkNavyBg else LightNavyBg
                 ) {
                     when (destinoActual) {
@@ -381,20 +495,48 @@ fun ComuniMapApp(
                             usuarioActual = usuarioActual,
                             esAdministrador = esAdministrador,
                             onNavigateToReportes = { destinoActual = DestinoNavegacion.REPORTES },
-                            onNavigateToMapa = { destinoActual = DestinoNavegacion.MAPA },
+                            onNavigateToMapa = {
+                                idReporteParaMapa = null
+                                destinoActual = DestinoNavegacion.MAPA
+                            },
                             onNavigateToUsuarios = {
                                 if (esAdministrador) {
                                     destinoActual = DestinoNavegacion.USUARIOS
                                 }
+                            },
+                            onNavigateToComunidad = {
+                                origenComunidadAdmin = DestinoNavegacion.INICIO
+                                destinoActual = DestinoNavegacion.COMUNIDAD
                             }
+                        )
+                        DestinoNavegacion.COMUNIDAD -> ComunidadScreen(
+                            usuarioActual = usuarioActual,
+                            esAdministrador = esAdministrador,
+                            tokenApi = tokenApiActual,
+                            idPublicacionObjetivo = idPublicacionObjetivo,
+                            onPublicacionObjetivoProcesada = {
+                                idPublicacionObjetivo = null
+                            },
+                            onNavigateBack = if (esAdministrador) {
+                                { destinoActual = origenComunidadAdmin }
+                            } else null
                         )
                         DestinoNavegacion.REPORTES -> ReportesScreen(
                             usuarioActual = usuarioActual,
-                            esAdministrador = esAdministrador
+                            esAdministrador = esAdministrador,
+                            tokenApi = tokenApiActual,
+                            onVerReporteEnMapa = { reporte ->
+                                idReporteParaMapa = reporte.idReporte
+                                destinoActual = DestinoNavegacion.MAPA
+                            }
                         )
                         DestinoNavegacion.MAPA -> MapaScreen(
                             usuarioActual = usuarioActual,
-                            esAdministrador = esAdministrador
+                            esAdministrador = esAdministrador,
+                            idReporteEnfocar = idReporteParaMapa,
+                            onLimpiarReporteEnfocar = {
+                                idReporteParaMapa = null
+                            }
                         )
                         DestinoNavegacion.USUARIOS -> {
                             if (esAdministrador) {
@@ -409,13 +551,25 @@ fun ComuniMapApp(
                         }
                         DestinoNavegacion.MAS -> MasScreen(
                             usuarioActual = usuarioActual,
+                            esAdministrador = esAdministrador,
                             esModoOscuro = esModoOscuro,
                             modoTema = modoTema,
                             onCambiarModoTema = onCambiarModoTema,
+                            onNavigateToComunidad = {
+                                origenComunidadAdmin = DestinoNavegacion.MAS
+                                destinoActual = DestinoNavegacion.COMUNIDAD
+                            },
                             onCerrarSesion = {
+                                PreferenciasManager.eliminarTokenApi(context)
+                                PreferenciasManager.eliminarSesionUsuario(context)
+                                tokenApiActual = null
                                 usuarioActual = null
                                 destinoActual = DestinoNavegacion.INICIO
+                                origenComunidadAdmin = DestinoNavegacion.MAS
                                 notificacionVisible = null
+                                idPublicacionObjetivo = null
+                                publicacionPendienteLogin = null
+                                idReporteParaMapa = null
                                 colaNotificaciones.clear()
                                 notificacionesMostradas.clear()
                             }
@@ -428,6 +582,16 @@ fun ComuniMapApp(
             NotificacionBanner(
                 notificacion = notificacionVisible,
                 onDismiss = {
+                    notificacionVisible = null
+                },
+                onClickBanner = { notif ->
+                    val esTipoComunidad = notif.tipo.trim().equals("COMUNIDAD", ignoreCase = true)
+                    val idPub = notif.idPublicacionInt
+                    if (esTipoComunidad && !esAdministrador && idPub != null && idPub > 0) {
+                        Log.d("NOTIFICACIONES", "Banner de Comunidad pulsado para publicación $idPub")
+                        destinoActual = DestinoNavegacion.COMUNIDAD
+                        idPublicacionObjetivo = idPub
+                    }
                     notificacionVisible = null
                 },
                 modifier = Modifier.align(Alignment.TopCenter)

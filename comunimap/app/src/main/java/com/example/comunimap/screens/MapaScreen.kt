@@ -3,6 +3,7 @@ package com.example.comunimap.screens
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -51,19 +54,20 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -102,7 +106,9 @@ import java.io.FileOutputStream
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
+import org.json.JSONObject
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
@@ -114,52 +120,103 @@ import org.osmdroid.views.overlay.Polygon
 // PANTALLA: MAPA REAL (OPENSTREETMAP / OSMDROID)
 // =====================================================
 
-// Coordenadas iniciales centradas en Cochabamba, Bolivia
-private const val COCHABAMBA_LAT = -17.4405
-private const val COCHABAMBA_LNG = -66.1455
-private const val DEFAULT_ZOOM = 15.0
+// Coordenadas de referencia y centrado de la OTB ampliada
+private const val OTB_CENTRO_LAT = -17.440158
+private const val OTB_CENTRO_LNG = -66.146495
+private const val DEFAULT_ZOOM = 15.5
 
-// Límite ampliado de la OTB (26 vértices), coincidente con
-// comunimap-api/otb_limite_para_comunimap.geojson.
-// GeoPoint utiliza el orden (latitud, longitud).
-private val OTB_VERTICES: List<GeoPoint> = listOf(
-    GeoPoint(-17.438905, -66.144848),
-    GeoPoint(-17.437252, -66.142414),
-    GeoPoint(-17.436963, -66.141843),
-    GeoPoint(-17.436995, -66.141026),
-    GeoPoint(-17.436773, -66.140181),
-    GeoPoint(-17.436879, -66.140111),
-    GeoPoint(-17.437619, -66.140472),
-    GeoPoint(-17.438593, -66.140678),
-    GeoPoint(-17.439773, -66.141919),
-    GeoPoint(-17.440066, -66.14231),
-    GeoPoint(-17.440578, -66.14252),
-    GeoPoint(-17.440716, -66.142171),
-    GeoPoint(-17.441576, -66.142458),
-    GeoPoint(-17.442565, -66.140022),
-    GeoPoint(-17.44313, -66.139963),
-    GeoPoint(-17.443246, -66.140849),
-    GeoPoint(-17.443542, -66.141117),
-    GeoPoint(-17.44118, -66.143509),
-    GeoPoint(-17.441614, -66.144482),
-    GeoPoint(-17.442432, -66.145046),
-    GeoPoint(-17.443051, -66.147331),
-    GeoPoint(-17.44236, -66.149836),
-    GeoPoint(-17.442071, -66.153027),
-    GeoPoint(-17.440148, -66.14975),
-    GeoPoint(-17.438166, -66.146308),
-    GeoPoint(-17.439246, -66.145528)
+// 26 vértices únicos del perímetro territorial ampliado de la OTB
+private val OTB_VERTICES = listOf(
+    GeoPoint(-17.438905, -66.144848), // P1
+    GeoPoint(-17.437252, -66.142414), // P2
+    GeoPoint(-17.436963, -66.141843), // P3
+    GeoPoint(-17.436995, -66.141026), // P4
+    GeoPoint(-17.436773, -66.140181), // P5
+    GeoPoint(-17.436879, -66.140111), // P6
+    GeoPoint(-17.437619, -66.140472), // P7
+    GeoPoint(-17.438593, -66.140678), // P8
+    GeoPoint(-17.439773, -66.141919), // P9
+    GeoPoint(-17.440066, -66.142310), // P10
+    GeoPoint(-17.440578, -66.142520), // P11
+    GeoPoint(-17.440716, -66.142171), // P12
+    GeoPoint(-17.441576, -66.142458), // P13
+    GeoPoint(-17.442565, -66.140022), // P14
+    GeoPoint(-17.443130, -66.139963), // P15
+    GeoPoint(-17.443246, -66.140849), // P16
+    GeoPoint(-17.443542, -66.141117), // P17
+    GeoPoint(-17.441180, -66.143509), // P18
+    GeoPoint(-17.441614, -66.144482), // P19
+    GeoPoint(-17.442432, -66.145046), // P20
+    GeoPoint(-17.443051, -66.147331), // P21
+    GeoPoint(-17.442360, -66.149836), // P22
+    GeoPoint(-17.442071, -66.153027), // P23
+    GeoPoint(-17.440148, -66.149750), // P24
+    GeoPoint(-17.438166, -66.146308), // P25
+    GeoPoint(-17.439246, -66.145528)  // P26
 )
 
-private fun agregarPerimetroOTB(mapView: MapView) {
-    val contorno = Polygon(mapView).apply {
-        points = OTB_VERTICES
-        fillPaint.color = android.graphics.Color.argb(36, 37, 99, 235)
-        outlinePaint.color = android.graphics.Color.rgb(37, 99, 235)
-        outlinePaint.strokeWidth = 5f
-        title = "Territorio permitido de la OTB"
+// Alias para compatibilidad con código existente
+private val VERTICES_OTB = OTB_VERTICES
+
+// Distancia euclidiana mínima de un punto (lat, lng) a un segmento de recta (a -> b)
+private fun distanciaPuntoASegmento(
+    pLat: Double, pLng: Double,
+    aLat: Double, aLng: Double,
+    bLat: Double, bLng: Double
+): Double {
+    val dLat = bLat - aLat
+    val dLng = bLng - aLng
+    val longCuadrado = dLat * dLat + dLng * dLng
+    if (longCuadrado == 0.0) {
+        val latDiff = pLat - aLat
+        val lngDiff = pLng - aLng
+        return kotlin.math.sqrt(latDiff * latDiff + lngDiff * lngDiff)
     }
-    mapView.overlays.add(contorno)
+    val t = ((pLat - aLat) * dLat + (pLng - aLng) * dLng) / longCuadrado
+    val tClamped = t.coerceIn(0.0, 1.0)
+    val projLat = aLat + tClamped * dLat
+    val projLng = aLng + tClamped * dLng
+    val latDiff = pLat - projLat
+    val lngDiff = pLng - projLng
+    return kotlin.math.sqrt(latDiff * latDiff + lngDiff * lngDiff)
+}
+
+// Validación geográfica Point-in-Polygon (Ray Casting) con tolerancia en bordes
+private fun estaDentroDeOTB(lat: Double, lng: Double): Boolean {
+    val vertices = VERTICES_OTB
+    val n = vertices.size
+    if (n < 3) return false
+
+    // Tolerancia numérica estricta en el perímetro (1e-6 grados ≈ 10 cm) para redondeo de punto flotante sobre el borde
+    val toleranciaBorde = 0.000001
+    for (i in 0 until n) {
+        val j = (i + 1) % n
+        val p1 = vertices[i]
+        val p2 = vertices[j]
+        if (distanciaPuntoASegmento(lat, lng, p1.latitude, p1.longitude, p2.latitude, p2.longitude) <= toleranciaBorde) {
+            return true
+        }
+    }
+
+    // Algoritmo de Ray Casting (Even-Odd rule)
+    var adentro = false
+    var j = n - 1
+    for (i in 0 until n) {
+        val yi = vertices[i].latitude
+        val xi = vertices[i].longitude
+        val yj = vertices[j].latitude
+        val xj = vertices[j].longitude
+
+        val cruzaY = (yi > lat) != (yj > lat)
+        if (cruzaY) {
+            val interseccionX = (xj - xi) * (lat - yi) / (yj - yi) + xi
+            if (lng < interseccionX) {
+                adentro = !adentro
+            }
+        }
+        j = i
+    }
+    return adentro
 }
 
 // Colores del tema visual navy
@@ -171,7 +228,9 @@ private val AccentBlue = Color(0xFF3B82F6)
 @Composable
 fun MapaScreen(
     usuarioActual: Usuario? = null,
-    esAdministrador: Boolean = false
+    esAdministrador: Boolean = false,
+    idReporteEnfocar: String? = null,
+    onLimpiarReporteEnfocar: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -182,8 +241,25 @@ fun MapaScreen(
     var reportes by remember { mutableStateOf<List<Reporte>>(emptyList()) }
     var categorias by remember { mutableStateOf<List<Categoria>>(emptyList()) }
 
-    // Estados para el reporte seleccionado al tocar un marcador existente
+    // Estados para el reporte seleccionado al tocar un marcador existente (Modal Bottom Sheet)
     var reporteSeleccionado by remember { mutableStateOf<Reporte?>(null) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+
+    // Garantizar que si se selecciona un reporte, el panel se muestre correctamente
+    LaunchedEffect(reporteSeleccionado) {
+        if (reporteSeleccionado != null) {
+            try {
+                sheetState.show()
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Al salir de la pantalla, asegurar que el reporte seleccionado se limpie
+    DisposableEffect(Unit) {
+        onDispose {
+            reporteSeleccionado = null
+        }
+    }
 
     // =====================================================
     // ESTADOS DEL FLUJO DE CREACIÓN DE REPORTES
@@ -195,8 +271,27 @@ fun MapaScreen(
     // Referencia al MapView
     var mapViewInstance by remember { mutableStateOf<MapView?>(null) }
 
-    // En el mapa se muestran TODOS los reportes de la comunidad para todos los usuarios
-    val reportesVisibles = reportes
+    // Estado local para reporte enfocado temporalmente (por ejemplo, desde reportes solucionados)
+    var idReporteTemporalEnfocado by remember(idReporteEnfocar) { mutableStateOf(idReporteEnfocar) }
+
+    fun esReporteSolucionado(estado: String?): Boolean {
+        val norm = estado?.trim()?.lowercase(Locale.ROOT)
+        return norm == "solucionado" || norm == "resuelto"
+    }
+
+    // En el mapa habitual se ocultan los reportes solucionados/resueltos.
+    // Únicamente si el usuario solicita ver la ubicación de un reporte solucionado específico
+    // desde sus detalles, se muestra temporalmente ese reporte con su pin verde.
+    val reportesVisibles = remember(reportes, idReporteTemporalEnfocado) {
+        reportes.filter { reporte ->
+            val esSol = esReporteSolucionado(reporte.estado)
+            if (!esSol) {
+                true
+            } else {
+                idReporteTemporalEnfocado != null && reporte.idReporte == idReporteTemporalEnfocado
+            }
+        }
+    }
 
     // Consulta de los reportes y categorías reales para el mapa
     suspend fun cargarDatos() {
@@ -260,13 +355,49 @@ fun MapaScreen(
         )
     }
 
+    // Efecto para enfocar y centrar el reporte solicitado (por ejemplo, reporte solucionado desde detalles)
+    LaunchedEffect(idReporteTemporalEnfocado, reportes, mapViewInstance) {
+        val targetId = idReporteTemporalEnfocado
+        if (!targetId.isNullOrBlank() && mapViewInstance != null && reportes.isNotEmpty()) {
+            val targetReporte = reportes.find { it.idReporte == targetId }
+            if (targetReporte != null) {
+                val ubicacion = targetReporte.ubicacion
+                if (!ubicacion.isNullOrBlank()) {
+                    val partes = ubicacion.split(",")
+                    if (partes.size >= 2) {
+                        val lat = partes[0].trim().toDoubleOrNull()
+                        val lng = partes[1].trim().toDoubleOrNull()
+                        if (lat != null && lng != null) {
+                            mapViewInstance?.controller?.apply {
+                                setZoom(18.0)
+                                setCenter(GeoPoint(lat, lng))
+                            }
+                            reporteSeleccionado = targetReporte
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Scaffold(
         containerColor = DarkNavyBg,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DarkNavyBg)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = if (modoSeleccionUbicacion) {
                                 "Selecciona Ubicación"
@@ -274,7 +405,9 @@ fun MapaScreen(
                                 "Mapa de Reportes"
                             },
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            fontSize = 19.sp,
+                            color = Color.White,
+                            maxLines = 1
                         )
                         Text(
                             text = if (modoSeleccionUbicacion) {
@@ -283,11 +416,10 @@ fun MapaScreen(
                                 "Incidentes comunitarios • Cochabamba"
                             },
                             fontSize = 11.sp,
-                            color = Color(0xFF94A3B8)
+                            color = Color(0xFF94A3B8),
+                            maxLines = 1
                         )
                     }
-                },
-                actions = {
                     if (modoSeleccionUbicacion) {
                         // Botón para salir del modo selección
                         TextButton(
@@ -300,7 +432,11 @@ fun MapaScreen(
                         }
                     } else {
                         IconButton(
-                            onClick = { coroutineScope.launch { cargarDatos() } },
+                            onClick = {
+                                idReporteTemporalEnfocado = null
+                                onLimpiarReporteEnfocar()
+                                coroutineScope.launch { cargarDatos() }
+                            },
                             enabled = !isLoading,
                             modifier = Modifier.testTag("mapa_refresh_button")
                         ) {
@@ -311,20 +447,18 @@ fun MapaScreen(
                             )
                         }
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkNavyBg,
-                    titleContentColor = Color.White
+                }
+                HorizontalDivider(
+                    color = Color(0xFF1E293B).copy(alpha = 0.7f),
+                    thickness = 1.dp
                 )
-            )
+            }
         },
         floatingActionButton = {
             // Controles flotantes en la esquina inferior derecha:
             // 1. Botón circular para centrar mapa
-            // 2. Separación visual clara
-            // 3. Botón principal "Crear reporte"
-            // 4. Margen inferior suficiente respecto a la barra inferior de navegación
-            if (!modoSeleccionUbicacion) {
+            // Ocultar temporalmente los controles flotantes si estamos en modo selección o si el panel inferior está abierto
+            if (!modoSeleccionUbicacion && reporteSeleccionado == null) {
                 Column(
                     horizontalAlignment = Alignment.End,
                     modifier = Modifier.padding(bottom = 16.dp, end = 4.dp)
@@ -332,8 +466,9 @@ fun MapaScreen(
                     // Botón circular para centrar mapa
                     FloatingActionButton(
                         onClick = {
-                            mapViewInstance?.controller?.animateTo(GeoPoint(COCHABAMBA_LAT, COCHABAMBA_LNG))
-                            mapViewInstance?.controller?.setZoom(DEFAULT_ZOOM)
+                            val boundingBoxOtb = BoundingBox.fromGeoPoints(VERTICES_OTB)
+                            val borderPaddingPx = (36 * context.resources.displayMetrics.density).toInt().coerceAtLeast(40)
+                            mapViewInstance?.zoomToBoundingBox(boundingBoxOtb, true, borderPaddingPx)
                         },
                         shape = CircleShape,
                         containerColor = Color(0xFF1E293B),
@@ -345,7 +480,7 @@ fun MapaScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.MyLocation,
-                            contentDescription = "Centrar en Cochabamba",
+                            contentDescription = "Centrar en OTB",
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -400,15 +535,37 @@ fun MapaScreen(
                         // Ocultar los botones de zoom legacy de osmdroid en la esquina inferior
                         // para evitar amontonamiento con el botón Crear reporte
                         zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-                        controller.setZoom(DEFAULT_ZOOM)
-                        controller.setCenter(GeoPoint(COCHABAMBA_LAT, COCHABAMBA_LNG))
+
+                        // 1. Centro y zoom de referencia iniciales mientras se completa el layout
+                        controller.setCenter(GeoPoint(OTB_CENTRO_LAT, OTB_CENTRO_LNG))
+
+                        // 2. Encuadre automático de la OTB al abrir el mapa por primera vez
+                        val boundingBoxOtb = BoundingBox.fromGeoPoints(VERTICES_OTB)
+                        val borderPaddingPx = (36 * ctx.resources.displayMetrics.density).toInt().coerceAtLeast(40)
+
+                        if (isLayoutOccurred && width > 0 && height > 0) {
+                            zoomToBoundingBox(boundingBoxOtb, false, borderPaddingPx)
+                        } else {
+                            addOnFirstLayoutListener { _, _, _, _, _ ->
+                                zoomToBoundingBox(boundingBoxOtb, false, borderPaddingPx)
+                            }
+                        }
 
                         // Evento de toque en el mapa
                         val receiver = object : MapEventsReceiver {
                             override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
                                 if (modoSeleccionUbicacion) {
-                                    // Guardar coordenadas y fijar punto temporal
-                                    puntoTemporal = p
+                                    if (estaDentroDeOTB(p.latitude, p.longitude)) {
+                                        // Ubicación dentro de la OTB: aceptar punto temporal
+                                        puntoTemporal = p
+                                    } else {
+                                        // Ubicación fuera de la OTB: rechazar y notificar al vecino
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                "Esta ubicación está fuera de los límites de la OTB. Selecciona un punto dentro del barrio."
+                                            )
+                                        }
+                                    }
                                     return true
                                 }
                                 return false
@@ -575,26 +732,35 @@ fun MapaScreen(
             }
 
             // =====================================================
-            // DETALLE DE REPORTE EXISTENTE (AL TOCAR UN PIN)
+            // PANEL INFERIOR: DETALLE DE REPORTE (MODAL BOTTOM SHEET M3)
             // =====================================================
-            reporteSeleccionado?.let { reporte ->
-                Card(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .testTag("mapa_reporte_info_card"),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkCardBg),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            if (reporteSeleccionado != null && !modoSeleccionUbicacion) {
+                val reporte = reporteSeleccionado!!
+                ModalBottomSheet(
+                    onDismissRequest = {
+                        reporteSeleccionado = null
+                    },
+                    sheetState = sheetState,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    containerColor = DarkCardBg,
+                    contentColor = Color.White,
+                    scrimColor = Color.Black.copy(alpha = 0.55f),
+                    dragHandle = {
+                        BottomSheetDefaults.DragHandle(
+                            color = Color(0xFF64748B)
+                        )
+                    },
+                    modifier = Modifier.testTag("mapa_reporte_bottom_sheet")
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 420.dp)
-                            .padding(16.dp)
                             .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 32.dp)
+                            .testTag("mapa_reporte_info_card")
                     ) {
+                        // 1. Encabezado con título del reporte y botón X para cerrar
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -602,21 +768,36 @@ fun MapaScreen(
                         ) {
                             Text(
                                 text = reporte.titulo,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
                                 modifier = Modifier.weight(1f)
                             )
-                            IconButton(onClick = { reporteSeleccionado = null }) {
-                                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color(0xFF94A3B8))
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        try {
+                                            sheetState.hide()
+                                        } finally {
+                                            reporteSeleccionado = null
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.testTag("mapa_bottom_sheet_close_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cerrar detalles del reporte",
+                                    tint = Color(0xFF94A3B8)
+                                )
                             }
                         }
 
-                        // Estado con color distintivo (Rojo, Amarillo, Verde)
-                        val colorEstado = when (reporte.estado.trim().lowercase()) {
+                        // 2. Estado del reporte con color distintivo (Rojo, Amarillo, Verde) y badge de usuario
+                        val colorEstado = when (reporte.estado.trim().lowercase(Locale.ROOT)) {
                             "pendiente" -> Color(0xFFEF4444)     // Rojo
                             "en proceso" -> Color(0xFFF59E0B)    // Amarillo
-                            "solucionado" -> Color(0xFF10B981)   // Verde
+                            "solucionado", "resuelto" -> Color(0xFF10B981)   // Verde
                             else -> Color(0xFF38BDF8)
                         }
 
@@ -624,19 +805,22 @@ fun MapaScreen(
                             reporte.idUsuario != null &&
                             reporte.idUsuario.trim() == usuarioActual.idUsuario.trim()
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 6.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
                                     .background(colorEstado)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = reporte.estado,
                                 fontWeight = FontWeight.Bold,
                                 color = colorEstado,
-                                fontSize = 12.sp
+                                fontSize = 13.sp
                             )
 
                             if (esReportePropio) {
@@ -645,7 +829,10 @@ fun MapaScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
                                         .background(Color(0xFF0284C7).copy(alpha = 0.25f))
-                                        .border(BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)), RoundedCornerShape(6.dp))
+                                        .border(
+                                            BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+                                            RoundedCornerShape(6.dp)
+                                        )
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
                                     Text(
@@ -658,48 +845,79 @@ fun MapaScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = reporte.descripcion,
-                            color = Color(0xFFCBD5E1),
-                            fontSize = 13.sp,
-                            maxLines = 3
-                        )
-
-                        if (!reporte.direccion.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = Color(0xFF38BDF8),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = reporte.direccion,
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                        }
-
+                        // 3. Categoría del reporte
                         if (!reporte.categoria.isNullOrBlank()) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "Categoría: ${reporte.categoria}",
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
                                 color = Color(0xFF60A5FA),
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
 
-                        // Evidencia fotográfica si el reporte contiene imagen
+                        // 4. Dirección o ubicación de referencia
+                        if (!reporte.direccion.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = reporte.direccion,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFCBD5E1)
+                                )
+                            }
+                        }
+
+                        // 5. Coordenadas geográficas
+                        if (!reporte.ubicacion.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Coordenadas: ${reporte.ubicacion}",
+                                fontSize = 12.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+
+                        // 6. Usuario que realizó el reporte (útil para administradores)
+                        val reportador = reporte.usuario ?: reporte.idUsuario
+                        if (!reportador.isNullOrBlank() && esAdministrador) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Reportado por: $reportador",
+                                fontSize = 12.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+
+                        // 7. Descripción completa con desplazamiento vertical fluido
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Descripción",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF94A3B8)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = reporte.descripcion.ifBlank { "Sin descripción disponible." },
+                            color = Color(0xFFE2E8F0),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp
+                        )
+
+                        // 8. Evidencia fotográfica sin deformación
                         if (!reporte.imagen.isNullOrBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
                             SeccionEvidenciaFotografica(
                                 rutaImagen = reporte.imagen,
-                                altura = 150.dp,
+                                altura = 180.dp,
                                 tituloColor = Color.White
                             )
                         }
@@ -795,7 +1013,16 @@ fun MapaScreen(
                             // Acción 2: Continuar con el reporte
                             Button(
                                 onClick = {
-                                    mostrarFormularioCrear = true
+                                    val pt = puntoTemporal
+                                    if (pt != null && estaDentroDeOTB(pt.latitude, pt.longitude)) {
+                                        mostrarFormularioCrear = true
+                                    } else {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar(
+                                                "Esta ubicación está fuera de los límites de la OTB. Selecciona un punto dentro del barrio."
+                                            )
+                                        }
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                                 shape = RoundedCornerShape(14.dp),
@@ -840,6 +1067,8 @@ fun MapaScreen(
             usuarioActual = usuarioActual,
             onDismiss = {
                 mostrarFormularioCrear = false
+                modoSeleccionUbicacion = false
+                puntoTemporal = null
             },
             onReporteCreado = {
                 // Al guardar exitosamente: salir del modo selección, limpiar punto y refrescar marcadores
@@ -1224,6 +1453,15 @@ private fun FormularioCrearReporteDialog(
                         return@Button
                     }
 
+                    // Validación secundaria de seguridad: confirmar que las coordenadas sigan dentro de la OTB
+                    val partesCoords = ubicacion.split(",")
+                    val latVal = partesCoords.getOrNull(0)?.trim()?.toDoubleOrNull()
+                    val lngVal = partesCoords.getOrNull(1)?.trim()?.toDoubleOrNull()
+                    if (latVal == null || lngVal == null || !estaDentroDeOTB(latVal, lngVal)) {
+                        formError = "Esta ubicación está fuera de los límites de la OTB. Selecciona un punto dentro del barrio."
+                        return@Button
+                    }
+
                     coroutineScope.launch {
                         isSubmitting = true
                         formError = null
@@ -1281,7 +1519,40 @@ private fun FormularioCrearReporteDialog(
                                 uriFotoCamara = null
                                 onReporteCreado()
                             } else {
-                                formError = resp.body()?.message ?: "Error al crear reporte: HTTP ${resp.code()}"
+                                if (resp.code() == 422) {
+                                    var mensaje422: String? = null
+                                    try {
+                                        val errorRaw = resp.errorBody()?.string()
+                                        if (!errorRaw.isNullOrBlank()) {
+                                            val json = JSONObject(errorRaw)
+                                            if (json.has("message") && !json.isNull("message")) {
+                                                mensaje422 = json.getString("message")
+                                            } else if (json.has("mensaje") && !json.isNull("mensaje")) {
+                                                mensaje422 = json.getString("mensaje")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("API_ERROR_422", "Error parseando cuerpo de error HTTP 422", e)
+                                    }
+                                    formError = if (!mensaje422.isNullOrBlank()) {
+                                        mensaje422
+                                    } else {
+                                        "No se pudo registrar el reporte. Verifica que la ubicación esté dentro de la OTB."
+                                    }
+                                } else {
+                                    var errServidor = resp.body()?.message
+                                    if (errServidor.isNullOrBlank()) {
+                                        try {
+                                            val errorRaw = resp.errorBody()?.string()
+                                            if (!errorRaw.isNullOrBlank()) {
+                                                val json = JSONObject(errorRaw)
+                                                if (json.has("message")) errServidor = json.getString("message")
+                                                else if (json.has("mensaje")) errServidor = json.getString("mensaje")
+                                            }
+                                        } catch (_: Exception) {}
+                                    }
+                                    formError = errServidor ?: "Error del servidor: HTTP ${resp.code()}"
+                                }
                             }
                         } catch (ex: Exception) {
                             Log.e("API_ERROR", "Error creando reporte en mapa", ex)
@@ -1506,57 +1777,70 @@ private fun actualizarMarcadoresEnMapa(
     // Conservar el primer overlay de eventos y limpiar los demás
     val eventOverlay = mapView.overlays.filterIsInstance<MapEventsOverlay>().firstOrNull()
     mapView.overlays.clear()
-    if (eventOverlay != null) {
-        mapView.overlays.add(eventOverlay)
+
+    // 1. Agregar el polígono con la delimitación territorial de la OTB
+    val poligonoOtb = Polygon(mapView).apply {
+        // 26 vértices cerrando P26 con P1
+        val puntosPoligono = ArrayList(OTB_VERTICES).apply {
+            add(OTB_VERTICES.first())
+        }
+        setPoints(puntosPoligono)
+        // Borde azul visible
+        strokeColor = android.graphics.Color.rgb(37, 99, 235) // #2563EB
+        strokeWidth = 5f
+        // Relleno azul claro semitransparente que permite ver calles y nombres
+        fillColor = android.graphics.Color.argb(45, 59, 130, 246) // #3B82F6 con transparencia suave
+        // Crucial: no consumir eventos de clic para que los toques fluyan a la selección y marcadores
+        setOnClickListener { _, _, _ -> false }
+        infoWindow = null
     }
+    mapView.overlays.add(poligonoOtb)
 
-    // Repintar el polígono siempre que se actualizan los marcadores.
-    agregarPerimetroOTB(mapView)
+    // 2. Agregar marcadores de reportes reales clasificados por color
+    // Solo cuando NO estamos en modo selección de ubicación para dejar el mapa libre
+    if (!modoSeleccion) {
+        reportes.forEach { reporte ->
+            val ubicacion = reporte.ubicacion
+            if (!ubicacion.isNullOrBlank()) {
+                val partes = ubicacion.split(",")
+                if (partes.size >= 2) {
+                    val lat = partes[0].trim().toDoubleOrNull()
+                    val lng = partes[1].trim().toDoubleOrNull()
+                    if (lat != null && lng != null) {
+                        val marker = Marker(mapView)
+                        marker.position = GeoPoint(lat, lng)
 
-    // 1. Agregar marcadores de reportes reales clasificados por color
-    reportes.forEach { reporte ->
-        val ubicacion = reporte.ubicacion
-        if (!ubicacion.isNullOrBlank()) {
-            val partes = ubicacion.split(",")
-            if (partes.size >= 2) {
-                val lat = partes[0].trim().toDoubleOrNull()
-                val lng = partes[1].trim().toDoubleOrNull()
-                if (lat != null && lng != null) {
-                    val marker = Marker(mapView)
-                    marker.position = GeoPoint(lat, lng)
-
-                    // Selección del color según el estado del reporte
-                    // Pendiente -> Rojo
-                    // En Proceso -> Amarillo
-                    // Solucionado -> Verde
-                    val drawableRes = when (reporte.estado.trim().lowercase()) {
-                        "pendiente" -> R.drawable.ic_pin_rojo
-                        "en proceso" -> R.drawable.ic_pin_amarillo
-                        "solucionado" -> R.drawable.ic_pin_verde
-                        else -> R.drawable.ic_pin_rojo
-                    }
-
-                    val pinDrawable = ContextCompat.getDrawable(context, drawableRes)
-                    marker.icon = pinDrawable
-                    marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-
-                    marker.title = reporte.titulo
-                    marker.subDescription = "Categoría: ${reporte.categoria ?: "N/A"}\nEstado: ${reporte.estado}\nDirección: ${reporte.direccion ?: "N/A"}"
-
-                    marker.setOnMarkerClickListener { _, _ ->
-                        if (!modoSeleccion) {
-                            onReporteClick(reporte)
+                        // Selección del color según el estado del reporte
+                        // Pendiente -> Rojo
+                        // En Proceso -> Amarillo
+                        // Solucionado -> Verde
+                        val drawableRes = when (reporte.estado.trim().lowercase()) {
+                            "pendiente" -> R.drawable.ic_pin_rojo
+                            "en proceso" -> R.drawable.ic_pin_amarillo
+                            "solucionado", "resuelto" -> R.drawable.ic_pin_verde
+                            else -> R.drawable.ic_pin_rojo
                         }
-                        true
-                    }
 
-                    mapView.overlays.add(marker)
+                        val pinDrawable = ContextCompat.getDrawable(context, drawableRes)
+                        marker.icon = pinDrawable
+                        marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+
+                        marker.title = reporte.titulo
+                        marker.subDescription = "Categoría: ${reporte.categoria ?: "N/A"}\nEstado: ${reporte.estado}\nDirección: ${reporte.direccion ?: "N/A"}"
+
+                        marker.setOnMarkerClickListener { _, _ ->
+                            onReporteClick(reporte)
+                            true
+                        }
+
+                        mapView.overlays.add(marker)
+                    }
                 }
             }
         }
     }
 
-    // 2. Agregar marcador temporal de selección si existe (Azul distintivo)
+    // 3. Agregar marcador temporal de selección si existe (Azul distintivo)
     if (puntoTemporal != null) {
         val tempMarker = Marker(mapView)
         tempMarker.position = puntoTemporal
@@ -1564,6 +1848,11 @@ private fun actualizarMarcadoresEnMapa(
         tempMarker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
         tempMarker.title = "Ubicación fijada"
         mapView.overlays.add(tempMarker)
+    }
+
+    // 4. Reincorporar MapEventsOverlay para capturar eventos de pulsación en el mapa
+    if (eventOverlay != null) {
+        mapView.overlays.add(eventOverlay)
     }
 
     mapView.invalidate()

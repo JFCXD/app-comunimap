@@ -17,5 +17,8 @@ data class LoginResponse(
     val message: String? = null,
 
     @Json(name = "usuario")
-    val usuario: Usuario? = null
+    val usuario: Usuario? = null,
+
+    @Json(name = "tokenApi")
+    val tokenApi: String? = null
 )

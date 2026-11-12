@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,6 +52,7 @@ import com.example.comunimap.models.Notificacion
 fun NotificacionBanner(
     notificacion: Notificacion?,
     onDismiss: () -> Unit = {},
+    onClickBanner: ((Notificacion) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -77,6 +79,11 @@ fun NotificacionBanner(
                     Icons.Default.Notifications,
                     "Nuevo Reporte"
                 )
+                "COMUNIDAD" -> Triple(
+                    Color(0xFF38BDF8), // Azul / Celeste ComuniMap
+                    Icons.Default.Groups,
+                    "Comunidad"
+                )
                 else -> Triple(
                     Color(0xFF60A5FA),
                     Icons.Default.Notifications,
@@ -96,7 +103,13 @@ fun NotificacionBanner(
                         .fillMaxWidth()
                         .widthIn(max = 500.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .clickable { onDismiss() }
+                        .clickable {
+                            if (onClickBanner != null) {
+                                onClickBanner(notificacion)
+                            } else {
+                                onDismiss()
+                            }
+                        }
                         .testTag("notificacion_banner"),
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),

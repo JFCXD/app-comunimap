@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
@@ -63,8 +65,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -114,12 +114,15 @@ private val AccentBlue = Color(0xFF3B82F6)
 @Composable
 fun MasScreen(
     usuarioActual: Usuario? = null,
+    esAdministrador: Boolean = false,
     esModoOscuro: Boolean = true,
     modoTema: ModoTema = ModoTema.SISTEMA,
     onCambiarModoTema: (ModoTema) -> Unit = {},
+    onNavigateToComunidad: () -> Unit = {},
     onCerrarSesion: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val esAdmin = esAdministrador || (usuarioActual?.rol?.trim()?.equals("Administrador", ignoreCase = true) == true)
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -206,45 +209,50 @@ fun MasScreen(
     Scaffold(
         containerColor = containerBg,
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 4.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(containerBg)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                ) {
+                    // Logo circular compacto de ComuniMap
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(if (esModoOscuro) Color(0xFF0F172A) else Color(0xFFDBEAFE))
+                            .border(1.5.dp, Color(0xFF38BDF8), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        // Logo circular de ComuniMap
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(if (esModoOscuro) Color(0xFF0F172A) else Color(0xFFDBEAFE))
-                                .border(1.5.dp, Color(0xFF38BDF8), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = "Logo ComuniMap",
-                                tint = if (esModoOscuro) Color(0xFF38BDF8) else Color(0xFF0284C7),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Text(
-                            text = "Ajustes y Cuenta",
-                            color = textoPrincipal,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Logo ComuniMap",
+                            tint = if (esModoOscuro) Color(0xFF38BDF8) else Color(0xFF0284C7),
+                            modifier = Modifier.size(19.dp)
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = containerBg,
-                    titleContentColor = textoPrincipal
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    Text(
+                        text = "Ajustes y Cuenta",
+                        color = textoPrincipal,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 19.sp
+                    )
+                }
+                HorizontalDivider(
+                    color = dividerColor.copy(alpha = 0.7f),
+                    thickness = 1.dp
                 )
-            )
+            }
         }
     ) { innerPadding ->
         LazyColumn(
@@ -252,8 +260,8 @@ fun MasScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 28.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
         ) {
             // =====================================================
             // 1. TARJETA DE PERFIL
@@ -264,7 +272,7 @@ fun MasScreen(
                         .fillMaxWidth()
                         .clickable { showPerfilDialog = true }
                         .testTag("tarjeta_perfil"),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
                     elevation = CardDefaults.cardElevation(defaultElevation = if (esModoOscuro) 3.dp else 1.dp),
                     border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(cardBorder))
@@ -272,7 +280,7 @@ fun MasScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Avatar circular con iniciales
@@ -344,21 +352,42 @@ fun MasScreen(
                 Text(
                     text = "Ajustes Principales",
                     color = if (esModoOscuro) AccentCyan else Color(0xFF0284C7),
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
                 )
             }
 
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
                     elevation = CardDefaults.cardElevation(defaultElevation = if (esModoOscuro) 3.dp else 1.dp),
                     border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(cardBorder))
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
+                        // 0. Módulo Comunidad (Exclusivo para Administrador)
+                        if (esAdmin) {
+                            AjusteItemRow(
+                                icono = Icons.Default.Groups,
+                                colorIcono = Color(0xFF38BDF8),
+                                colorFondoIcono = if (esModoOscuro) Color(0xFF0C4A6E) else Color(0xFFE0F2FE),
+                                titulo = "Comunidad",
+                                subtitulo = "Comunicados, actividades y encuestas de la OTB",
+                                textoPrincipal = textoPrincipal,
+                                textoMuted = textoMuted,
+                                testTag = "ajuste_comunidad_admin",
+                                onClick = onNavigateToComunidad
+                            )
+
+                            HorizontalDivider(
+                                color = dividerColor,
+                                thickness = 1.dp,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+
                         // 1. Tema de la Aplicación
                         AjusteItemRow(
                             icono = when (modoTema) {
@@ -481,16 +510,16 @@ fun MasScreen(
                 Text(
                     text = "Notificaciones",
                     color = if (esModoOscuro) AccentCyan else Color(0xFF0284C7),
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
                 )
             }
 
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
                     elevation = CardDefaults.cardElevation(defaultElevation = if (esModoOscuro) 3.dp else 1.dp),
                     border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(cardBorder))
@@ -581,9 +610,9 @@ fun MasScreen(
                 Text(
                     text = "Información del Proyecto",
                     color = if (esModoOscuro) AccentCyan else Color(0xFF0284C7),
-                    fontSize = 16.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
                 )
             }
 
@@ -591,10 +620,10 @@ fun MasScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(22.dp))
+                        .clip(RoundedCornerShape(18.dp))
                         .clickable { showAcercaDeDialog = true }
                         .testTag("card_acerca_de"),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = cardBg),
                     elevation = CardDefaults.cardElevation(defaultElevation = if (esModoOscuro) 3.dp else 1.dp),
                     border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(cardBorder))
@@ -602,7 +631,7 @@ fun MasScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
@@ -1469,7 +1498,7 @@ private fun AjusteItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1530,7 +1559,7 @@ private fun AjusteSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(

@@ -1,5 +1,7 @@
 package com.example.comunimap.api
 
+import com.example.comunimap.models.ActualizarEstadoGrupoRequest
+import com.example.comunimap.models.ActualizarEstadoGrupoResponse
 import com.example.comunimap.models.ActualizarEstadoReporteRequest
 import com.example.comunimap.models.ActualizarReporteRequest
 import com.example.comunimap.models.ActualizarUsuarioRequest
@@ -10,15 +12,22 @@ import com.example.comunimap.models.CrearReporteRequest
 import com.example.comunimap.models.CrearUsuarioRequest
 import com.example.comunimap.models.GuardarTokenFcmRequest
 import com.example.comunimap.models.LoginRequest
+import com.example.comunimap.models.ComunidadAdminResponse
+import com.example.comunimap.models.ComunidadSubirImagenResponse
 import com.example.comunimap.models.LoginResponse
 import com.example.comunimap.models.MarcarNotificacionRequest
 import com.example.comunimap.models.NotificacionesResponse
 import com.example.comunimap.models.ReportesResponse
 import com.example.comunimap.models.UsuariosResponse
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Query
 
 // =====================================================
@@ -53,6 +62,10 @@ interface ApiService {
     @GET("reportes.php")
     suspend fun obtenerReportes(): Response<ReportesResponse>
 
+    // Consulta los casos comunitarios agrupados por prioridad (radio 5m y misma categoría)
+    @GET("casos_agrupados.php")
+    suspend fun obtenerCasosAgrupados(): Response<com.example.comunimap.models.CasosAgrupadosResponse>
+
     // -------------------------------------------------
     // GESTIÓN DE USUARIOS
     // -------------------------------------------------
@@ -85,6 +98,13 @@ interface ApiService {
     @POST("actualizar_estado.php")
     suspend fun actualizarEstadoReporte(@Body request: ActualizarEstadoReporteRequest): Response<ApiResponse>
 
+    // Actualiza el estado de todos los reportes de un caso agrupado (Solo Administrador)
+    @POST("actualizar_estado_grupo.php")
+    suspend fun actualizarEstadoGrupo(
+        @Header("Authorization") authHeader: String,
+        @Body request: ActualizarEstadoGrupoRequest
+    ): Response<ActualizarEstadoGrupoResponse>
+
     // -------------------------------------------------
     // NOTIFICACIONES
     // -------------------------------------------------
@@ -110,4 +130,39 @@ interface ApiService {
     suspend fun guardarTokenFcm(
         @Body request: GuardarTokenFcmRequest
     ): Response<ApiResponse>
+
+    // -------------------------------------------------
+    // MÓDULO COMUNIDAD (COMUNICADOS, ACTIVIDADES, ENCUESTAS)
+    // -------------------------------------------------
+
+    // Consulta el muro de publicaciones comunitarias con paginación
+    @GET("comunidad.php")
+    suspend fun obtenerPublicacionesComunidad(
+        @Header("Authorization") authHeader: String,
+        @Query("page") page: Int,
+        @Query("administrar") administrar: Int? = null
+    ): Response<com.example.comunimap.models.ComunidadResponse>
+
+    // Registra el voto de un usuario en una encuesta comunitaria
+    @POST("votar_comunidad.php")
+    suspend fun votarComunidad(
+        @Header("Authorization") authHeader: String,
+        @Body request: com.example.comunimap.models.VotarComunidadRequest
+    ): Response<ApiResponse>
+
+    // Operaciones administrativas: crear, editar o cambiar estado de una publicación
+    @POST("comunidad_admin.php")
+    suspend fun comunidadAdmin(
+        @Header("Authorization") authHeader: String,
+        @Body request: com.example.comunimap.models.ComunidadAdminRequest
+    ): Response<ComunidadAdminResponse>
+
+    // Subir fotografía de una publicación comunitaria (multipart)
+    @Multipart
+    @POST("comunidad_imagen.php")
+    suspend fun subirImagenComunidad(
+        @Header("Authorization") authHeader: String,
+        @Part("idPublicacion") idPublicacion: RequestBody,
+        @Part imagen: MultipartBody.Part
+    ): Response<ComunidadSubirImagenResponse>
 }

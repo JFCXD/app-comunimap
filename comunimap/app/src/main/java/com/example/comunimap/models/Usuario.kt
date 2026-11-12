@@ -16,6 +16,12 @@ data class Usuario(
     @Json(name = "nombre")
     val nombre: String,
 
+    @Json(name = "apellido")
+    val apellido: String? = null,
+
+    @Json(name = "fechaNacimiento")
+    val fechaNacimiento: String? = null,
+
     @Json(name = "email")
     val email: String,
 
