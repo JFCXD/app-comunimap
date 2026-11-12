@@ -108,15 +108,59 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
 
 // =====================================================
 // PANTALLA: MAPA REAL (OPENSTREETMAP / OSMDROID)
 // =====================================================
 
 // Coordenadas iniciales centradas en Cochabamba, Bolivia
-private const val COCHABAMBA_LAT = -17.3895
-private const val COCHABAMBA_LNG = -66.1568
-private const val DEFAULT_ZOOM = 13.0
+private const val COCHABAMBA_LAT = -17.4405
+private const val COCHABAMBA_LNG = -66.1455
+private const val DEFAULT_ZOOM = 15.0
+
+// Límite ampliado de la OTB (26 vértices), coincidente con
+// comunimap-api/otb_limite_para_comunimap.geojson.
+// GeoPoint utiliza el orden (latitud, longitud).
+private val OTB_VERTICES: List<GeoPoint> = listOf(
+    GeoPoint(-17.438905, -66.144848),
+    GeoPoint(-17.437252, -66.142414),
+    GeoPoint(-17.436963, -66.141843),
+    GeoPoint(-17.436995, -66.141026),
+    GeoPoint(-17.436773, -66.140181),
+    GeoPoint(-17.436879, -66.140111),
+    GeoPoint(-17.437619, -66.140472),
+    GeoPoint(-17.438593, -66.140678),
+    GeoPoint(-17.439773, -66.141919),
+    GeoPoint(-17.440066, -66.14231),
+    GeoPoint(-17.440578, -66.14252),
+    GeoPoint(-17.440716, -66.142171),
+    GeoPoint(-17.441576, -66.142458),
+    GeoPoint(-17.442565, -66.140022),
+    GeoPoint(-17.44313, -66.139963),
+    GeoPoint(-17.443246, -66.140849),
+    GeoPoint(-17.443542, -66.141117),
+    GeoPoint(-17.44118, -66.143509),
+    GeoPoint(-17.441614, -66.144482),
+    GeoPoint(-17.442432, -66.145046),
+    GeoPoint(-17.443051, -66.147331),
+    GeoPoint(-17.44236, -66.149836),
+    GeoPoint(-17.442071, -66.153027),
+    GeoPoint(-17.440148, -66.14975),
+    GeoPoint(-17.438166, -66.146308),
+    GeoPoint(-17.439246, -66.145528)
+)
+
+private fun agregarPerimetroOTB(mapView: MapView) {
+    val contorno = Polygon(mapView).apply {
+        points = OTB_VERTICES
+        fillPaint.color = android.graphics.Color.argb(36, 37, 99, 235)
+        outlinePaint.color = android.graphics.Color.rgb(37, 99, 235)
+        outlinePaint.strokeWidth = 5f
+        title = "Territorio permitido de la OTB"
+    }
+    mapView.overlays.add(contorno)
+}
 
 // Colores del tema visual navy
 private val DarkNavyBg = Color(0xFF0B132B)
@@ -1465,6 +1509,9 @@ private fun actualizarMarcadoresEnMapa(
     if (eventOverlay != null) {
         mapView.overlays.add(eventOverlay)
     }
+
+    // Repintar el polígono siempre que se actualizan los marcadores.
+    agregarPerimetroOTB(mapView)
 
     // 1. Agregar marcadores de reportes reales clasificados por color
     reportes.forEach { reporte ->
